@@ -10,7 +10,7 @@ import { recommendNext } from "./decision-support"
 import { columns, duration, layoutFor, metric, money, padLeft, padRight, statusLabel, threeColumnWidths, truncate, widePaneWidths } from "./format"
 import { fetchQuotaSnapshot, type QuotaSnapshot } from "./quota-export"
 import type { ExecutionTracker } from "./tracker"
-import type { ChartCharset, ChartMode, ExecutionStatus } from "./types"
+import type { ChartCharset, ChartMode, ExecutionStatus, ExecutionRow, AgentRow } from "./types"
 
 type Props = {
   api: TuiPluginApi
@@ -22,6 +22,63 @@ type Props = {
   chartMode?: ChartMode
   chartCharset?: ChartCharset
   nativeSidebar?: boolean
+}
+
+function AgentRowRenderer(props: { api: TuiPluginApi; agent: AgentRow; index: number; width: number }) {
+  const state = () => props.agent.running ? "WORK" : "OK"
+  const details = () => props.agent.fallbackCount > 0 ? `${props.agent.model}+${props.agent.fallbackCount}` : props.agent.model
+  const available = () => Math.max(0, Math.floor(props.width))
+  const nameWidth = () => Math.floor(available() * 0.4) - 1
+
+  return (
+    <box backgroundColor={props.index % 2 === 0 ? props.api.theme.current.backgroundPanel : props.api.theme.current.backgroundElement} width="100%" flexDirection="row" justifyContent="space-between">
+      <box width="40%" flexDirection="row" justifyContent="flex-start">
+        <text fg={props.agent.running ? props.api.theme.current.warning : props.api.theme.current.text}>
+          {() => truncate(props.agent.name, nameWidth())}
+        </text>
+      </box>
+      <box width="40%" flexDirection="row" justifyContent="flex-start">
+        <text fg={props.api.theme.current.textMuted}>
+          {() => truncate(details(), nameWidth())}
+        </text>
+      </box>
+      <box width="20%" flexDirection="row" justifyContent="flex-end">
+        <text fg={props.agent.running ? props.api.theme.current.warning : props.api.theme.current.success}>
+          {state}
+        </text>
+      </box>
+    </box>
+  )
+}
+
+function ExecutionRowRenderer(props: {
+  api: TuiPluginApi
+  row: ExecutionRow
+  index: number
+  actualIndex: number
+  width: number
+  safeSelected: number
+  now: number
+  onSelect?: (index: number) => void
+}) {
+  return (
+    <box
+      width="100%"
+      flexDirection="row"
+      justifyContent="space-between"
+      backgroundColor={props.safeSelected === props.actualIndex ? props.api.theme.current.backgroundElement : (props.index % 2 === 0 ? props.api.theme.current.backgroundPanel : props.api.theme.current.backgroundElement)}
+      onMouseDown={() => {
+        props.onSelect?.(props.actualIndex)
+        if (props.row.sessionID) props.api.route.navigate("session", { sessionID: props.row.sessionID })
+      }}
+    >
+      <text fg={props.api.theme.current.text}>{() => truncate(props.row.title, props.width - 15)}</text>
+      <box flexDirection="row">
+        <text fg={props.api.theme.current.textMuted}>{() => `${duration(props.row.startedAt, props.row.endedAt, props.now)}  `}</text>
+        <text fg={statusColor(props.api, props.row.status)}>{() => statusLabel(props.row.status)}</text>
+      </box>
+    </box>
+  )
 }
 
 function currentSessionID(api: TuiPluginApi): string | undefined {
@@ -118,19 +175,7 @@ export function AgentMatrix(props: Props & { width?: number; limit?: number }) {
             </box>
           })()}
           <For each={rows().slice(0, props.limit ?? 20)}>
-            {(agent, index) => {
-              const state = agent.running ? "WORK" : "OK"
-              const details = agent.fallbackCount > 0 ? `${agent.model}+${agent.fallbackCount}` : agent.model
-              const available = Math.max(0, Math.floor(width()))
-              const nameWidth = Math.floor(available * 0.4) - 1
-              return (
-                <box backgroundColor={index() % 2 === 0 ? props.api.theme.current.backgroundPanel : props.api.theme.current.backgroundElement} width="100%" flexDirection="row" justifyContent="space-between">
-                  <box width="40%" flexDirection="row" justifyContent="flex-start"><text fg={agent.running ? props.api.theme.current.warning : props.api.theme.current.text}>{() => truncate(agent.name, nameWidth)}</text></box>
-                  <box width="40%" flexDirection="row" justifyContent="flex-start"><text fg={props.api.theme.current.textMuted}>{() => truncate(details, nameWidth)}</text></box>
-                  <box width="20%" flexDirection="row" justifyContent="flex-end"><text fg={agent.running ? props.api.theme.current.warning : props.api.theme.current.success}>{() => state}</text></box>
-                </box>
-              )
-            }}
+            {(agent, index) => <AgentRowRenderer api={props.api} agent={agent} index={index()} width={width()} />}
           </For>
           {rows().length === 0 && <text fg={props.api.theme.current.textMuted}>No configured agents</text>}
         </>
@@ -171,26 +216,18 @@ export function ExecutionBlotter(props: Props & { width?: number; limit?: number
       {!collapsed() && (
         <>
           <For each={visibleRows()}>
-            {(row, index) => {
-              const actualIndex = windowStart() + index()
-              return (
-              <box
-                width="100%"
-                flexDirection="row"
-                justifyContent="space-between"
-                backgroundColor={safeSelected() === actualIndex ? props.api.theme.current.backgroundElement : (index() % 2 === 0 ? props.api.theme.current.backgroundPanel : props.api.theme.current.backgroundElement)}
-                onMouseDown={() => {
-                  props.onSelect?.(actualIndex)
-                  if (row.sessionID) props.api.route.navigate("session", { sessionID: row.sessionID })
-                }}
-              >
-                <text fg={props.api.theme.current.text}>{() => truncate(row.title, width() - 15)}</text>
-                <box flexDirection="row">
-                  <text fg={props.api.theme.current.textMuted}>{() => `${duration(row.startedAt, row.endedAt, props.now?.() ?? Date.now())}  `}</text>
-                  <text fg={statusColor(props.api, row.status)}>{() => statusLabel(row.status)}</text>
-                </box>
-              </box>
-            )}}
+            {(row, index) => (
+              <ExecutionRowRenderer
+                api={props.api}
+                row={row}
+                index={index()}
+                actualIndex={windowStart() + index()}
+                width={width()}
+                safeSelected={safeSelected()}
+                now={props.now?.() ?? Date.now()}
+                onSelect={props.onSelect}
+              />
+            )}
           </For>
           {rows().length === 0 && <text fg={props.api.theme.current.textMuted}>No executions</text>}
         </>
