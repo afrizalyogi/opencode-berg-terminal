@@ -1,0 +1,54 @@
+{
+  "name": "opencode-berg-terminal",
+  "version": "0.2.0",
+  "description": "Source-first OpenCode TUI theme and responsive Berg command center",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.6.0",
+    "npm": ">=10"
+  },
+  "oc-plugin": [
+    "tui"
+  ],
+  "main": "./tui.tsx",
+  "exports": {
+    ".": "./tui.tsx",
+    "./tui": "./tui.tsx",
+    "./theme": "./themes/berg-terminal.json"
+  },
+  "files": [
+    "tui.tsx",
+    "src",
+    "themes/berg-terminal.json",
+    "examples/tui.json",
+    "scripts",
+    "tsconfig.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "doctor": "node ./scripts/doctor.mjs",
+    "install:check": "node ./scripts/install.mjs",
+    "install:local": "node ./scripts/install.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test ./src/*.test.ts"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": "1.15.4",
+    "@opentui/core": "0.2.11",
+    "@opentui/keymap": "0.2.11",
+    "@opentui/solid": "0.2.11",
+    "solid-js": "1.9.12"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "1.15.4",
+    "@opentui/core": "0.2.11",
+    "@opentui/keymap": "0.2.11",
+    "@opentui/solid": "0.2.11",
+    "@types/node": "^26.4.1",
+    "solid-js": "1.9.12",
+    "typescript": "5.8.2"
+  }
+}
