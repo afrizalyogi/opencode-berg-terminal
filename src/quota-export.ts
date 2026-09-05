@@ -113,16 +113,6 @@ async function fetchOpenRouter(auth: PlainObject): Promise<QuotaRow[]> {
   }
 }
 
-// Map cachedQuota model keys to display labels and provider labels
-// activeIndexByFamily = { "claude": 0, "gemini": 3 } means:
-//   claude model quota → account[0], gemini model quota → account[3]
-const MODEL_FAMILY: Record<string, string> = {
-  "claude": "Anthropic",
-  "gemini-flash": "Gemini Flash",
-  "gemini-pro": "Gemini Pro",
-  "gemini": "Gemini",
-}
-
 function modelFamily(key: string): string {
   if (key.includes("claude")) return "claude"
   if (key.includes("gemini-flash")) return "gemini-flash"
@@ -144,50 +134,47 @@ function modelProvider(key: string): string {
   return "Google"
 }
 
+export function maskAccount(value: unknown, index: number): string {
+  if (typeof value !== "string" || !value.includes("@")) return `Account ${index + 1}`
+  const [local, domain] = value.split("@")
+  if (!local || !domain) return `Account ${index + 1}`
+  return `${local.slice(0, 1)}${"*".repeat(Math.min(3, Math.max(1, local.length - 1)))}@${domain}`
+}
+
+export function parseAntigravityAccounts(value: unknown): QuotaRow[] {
+  const data = object(value)
+  if (!data) return []
+  const activeIndexByFamily: Record<string, number> = object(data.activeIndexByFamily) ?? {}
+  const accounts: any[] = Array.isArray(data.accounts) ? data.accounts : []
+  const rows: QuotaRow[] = []
+
+  accounts.forEach((account, accountIndex) => {
+    if (!account?.enabled || !object(account.cachedQuota)) return
+    const accountName = maskAccount(account.email, accountIndex)
+    for (const [modelKey, raw] of Object.entries(account.cachedQuota)) {
+      const quota = object(raw)
+      if (!quota || typeof quota.remainingFraction !== "number") continue
+      const family = modelFamily(modelKey)
+      const baseFamily = family.split("-")[0]
+      const activeIndex = activeIndexByFamily[baseFamily] ?? activeIndexByFamily[family]
+      const active = activeIndex === accountIndex ? " [active]" : ""
+      const resetAt = typeof quota.resetTime === "string" ? Date.parse(quota.resetTime) / 1000 : undefined
+      rows.push({
+        provider: modelProvider(modelKey),
+        name: `${modelDisplayName(modelKey)} · ${accountName}${active}`,
+        value: `${Math.round(Math.max(0, Math.min(1, quota.remainingFraction)) * 100)}% left`,
+        resetAt: Number.isFinite(resetAt) ? resetAt : undefined,
+      })
+    }
+  })
+
+  return rows.sort((left, right) => left.provider.localeCompare(right.provider) || left.name.localeCompare(right.name))
+}
+
 async function readAntigravity(): Promise<QuotaRow[]> {
   try {
     const data = JSON.parse(await readFile(join(homedir(), ".config", "opencode", "antigravity-accounts.json"), "utf8"))
-    const activeIndexByFamily: Record<string, number> = data.activeIndexByFamily ?? {}
-    const accounts: any[] = Array.isArray(data.accounts) ? data.accounts : []
-    if (accounts.length === 0) return []
-
-    // Build a map from family → active account index
-    // For each model key in cachedQuota, find which account is active for that family
-    const rows: QuotaRow[] = []
-    const seen = new Set<string>()
-
-    // Collect all unique model keys across all accounts to know what models exist
-    const allModelKeys = new Set<string>()
-    for (const acc of accounts) {
-      for (const k of Object.keys(acc.cachedQuota ?? {})) allModelKeys.add(k)
-    }
-
-    for (const modelKey of allModelKeys) {
-      const family = modelFamily(modelKey)
-      // Determine which account to use: prefer activeIndexByFamily for this family
-      // activeIndexByFamily keys are "claude" and "gemini"
-      const baseFamily = family.split("-")[0] // "gemini-flash" → "gemini"
-      const accountIndex = activeIndexByFamily[baseFamily] ?? activeIndexByFamily[family] ?? 0
-      const account = accounts[accountIndex]
-      if (!account?.enabled || !account.cachedQuota) continue
-
-      const raw = account.cachedQuota[modelKey]
-      const quota = object(raw)
-      if (!quota || typeof quota.remainingFraction !== "number") continue
-
-      const displayName = modelDisplayName(modelKey)
-      if (seen.has(displayName)) continue
-      seen.add(displayName)
-
-      rows.push({
-        provider: modelProvider(modelKey),
-        name: displayName,
-        value: `${Math.round(Math.max(0, Math.min(1, quota.remainingFraction)) * 100)}% left`,
-        resetAt: typeof quota.resetTime === "string" ? Date.parse(quota.resetTime) / 1000 : undefined,
-      })
-    }
-
-    return rows
+    return parseAntigravityAccounts(data)
   } catch {
     return []
   }

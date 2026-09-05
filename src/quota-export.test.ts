@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { describe, test } from "node:test"
-import { parseOpenAIUsage } from "./quota-export.ts"
+import { maskAccount, parseAntigravityAccounts, parseOpenAIUsage } from "./quota-export.ts"
 
 describe("standalone quota parser", () => {
   test("distinguishes OpenAI 5 hour and weekly windows", () => {
@@ -19,5 +19,29 @@ describe("standalone quota parser", () => {
 
   test("ignores malformed documents", () => {
     assert.deepEqual(parseOpenAIUsage(null), [])
+  })
+
+  test("shows quota for every enabled Antigravity account and marks active families", () => {
+    const result = parseAntigravityAccounts({
+      activeIndexByFamily: { claude: 0, gemini: 1 },
+      accounts: [
+        { email: "alpha@example.com", enabled: true, cachedQuota: { claude: { remainingFraction: 0.25 }, "gemini-pro": { remainingFraction: 0.5 } } },
+        { email: "beta@example.com", enabled: true, cachedQuota: { claude: { remainingFraction: 0.75 }, "gemini-pro": { remainingFraction: 1 } } },
+        { email: "disabled@example.com", enabled: false, cachedQuota: { claude: { remainingFraction: 1 } } },
+      ],
+    })
+
+    assert.equal(result.length, 4)
+    assert.deepEqual(result.map((row) => [row.provider, row.name, row.value]), [
+      ["Anthropic", "Claude · a***@example.com [active]", "25% left"],
+      ["Anthropic", "Claude · b***@example.com", "75% left"],
+      ["Google", "Gemini Pro · a***@example.com", "50% left"],
+      ["Google", "Gemini Pro · b***@example.com [active]", "100% left"],
+    ])
+  })
+
+  test("masks account emails and falls back to an index label", () => {
+    assert.equal(maskAccount("person@example.com", 0), "p***@example.com")
+    assert.equal(maskAccount(undefined, 2), "Account 3")
   })
 })
