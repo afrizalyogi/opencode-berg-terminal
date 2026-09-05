@@ -156,10 +156,10 @@ export function CommandEntry(props: { api: TuiPluginApi; prompt: TuiPromptProps 
 }
 
 export function AgentMatrix(props: Props & { width?: number; limit?: number }) {
-  const rows = createMemo(() => {
+  const rows = () => {
     props.tracker.counts(props.sessionID) // establish reactive dependency on tracker
     return configuredAgents(props.api, props.sessionID, props.tracker)
-  })
+  }
   const width = () => props.width ?? 31
   const [collapsed, setCollapsed] = createSignal(false)
   return (
@@ -187,8 +187,8 @@ export function AgentMatrix(props: Props & { width?: number; limit?: number }) {
 
 export function ExecutionBlotter(props: Props & { width?: number; limit?: number }) {
   const width = () => props.width ?? 31
-  const rows = createMemo(() => props.tracker.rows(props.sessionID))
-  const counts = createMemo(() => props.tracker.counts(props.sessionID))
+  const rows = () => props.tracker.rows(props.sessionID)
+  const counts = () => props.tracker.counts(props.sessionID)
   const limit = () => props.limit ?? 7
   const safeSelected = () => Math.min(Math.max(0, props.selectedIndex ?? 0), Math.max(0, rows().length - 1))
   const windowStart = () => Math.min(
@@ -244,7 +244,7 @@ export function Telemetry(props: Props & { width?: number; compact?: boolean }) 
     const off = props.api.event.on("message.updated", () => setTick(t => t + 1))
     onCleanup(() => off())
   })
-  const data = createMemo(() => props.sessionID ? sessionTelemetry(props.api, props.sessionID, tick()) : undefined)
+  const data = () => props.sessionID ? sessionTelemetry(props.api, props.sessionID, tick()) : undefined
   return (
     <box flexDirection="column" width="100%">
       <SectionTitle api={props.api} title="Usage" width={width()} native={props.nativeSidebar} />
@@ -338,7 +338,7 @@ function ConnectionsPanel(props: Props & { width: number }) {
 }
 
 function NextAction(props: Props & { width: number }) {
-  const recommendation = createMemo(() => {
+  const recommendation = () => {
     const status = props.sessionID ? props.api.state.session.status(props.sessionID)?.type : undefined
     const mcp = props.api.state.mcp()
     const counts = props.tracker.counts(props.sessionID)
@@ -352,7 +352,7 @@ function NextAction(props: Props & { width: number }) {
       mcpTotal: mcp.length,
       running: counts.running,
     })
-  })
+  }
   const [collapsed, setCollapsed] = createSignal(false)
   return <box flexDirection="column" width="100%">
     <SectionTitle api={props.api} title="Next action" right={() => recommendation().kind === "healthy" ? "OK" : "Review"} width={props.width} collapsed={collapsed()} onToggle={() => setCollapsed(!collapsed())} />
@@ -373,8 +373,8 @@ function ActivityChart(props: Props & { width: number }) {
     const off = props.api.event.on("message.updated", () => setTick((value) => value + 1))
     onCleanup(off)
   })
-  const telemetry = createMemo(() => props.sessionID ? sessionTelemetry(props.api, props.sessionID, tick()) : undefined)
-  const counts = createMemo(() => props.tracker.counts(props.sessionID))
+  const telemetry = () => props.sessionID ? sessionTelemetry(props.api, props.sessionID, tick()) : undefined
+  const counts = () => props.tracker.counts(props.sessionID)
   const mode = () => props.chartMode ?? "tokens"
   const charset = () => props.chartCharset ?? "ascii"
   const detail = () => {
@@ -402,7 +402,7 @@ export function BergCommandCenter(props: Props) {
   const layout = () => layoutFor(dimensions().width, dimensions().height)
   const session = () => props.sessionID ? props.api.state.session.get(props.sessionID) : undefined
   const status = () => props.sessionID ? props.api.state.session.status(props.sessionID)?.type ?? "idle" : "idle"
-  const rows = createMemo(() => props.tracker.rows(props.sessionID))
+  const rows = () => props.tracker.rows(props.sessionID)
   const innerWidth = () => Math.max(38, dimensions().width - 4)
   const paneWidths = () => widePaneWidths(innerWidth())
 
