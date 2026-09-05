@@ -289,14 +289,34 @@ export function QuotaPanel(props: { api: TuiPluginApi; width?: number }) {
   const [collapsed, setCollapsed] = createSignal(false)
   const [snapshot, setSnapshot] = createSignal<QuotaSnapshot>()
   const [collapsedAccounts, setCollapsedAccounts] = createSignal<Set<string>>(new Set())
+  const [refreshing, setRefreshing] = createSignal(false)
+  const refresh = async (notify = false) => {
+    if (refreshing()) return
+    setRefreshing(true)
+    try {
+      const next = await fetchQuotaSnapshot(true)
+      setSnapshot(next)
+      if (notify) {
+        const stale = next.rows.some((row) => row.provider === "Google" || row.provider === "Anthropic"
+          ? row.updatedAt !== undefined && Date.now() - row.updatedAt > 15 * 60_000
+          : false)
+        props.api.ui.toast(stale
+          ? { variant: "warning", title: "Antigravity cache is stale", message: "Run opencode auth login → Google → Check quotas, then refresh again.", duration: 6000 }
+          : { variant: "success", title: "Quota refreshed", message: "Live providers fetched and Antigravity cache reread.", duration: 3000 })
+      }
+    } finally {
+      setRefreshing(false)
+      props.api.renderer.requestRender()
+    }
+  }
   onMount(() => {
     let disposed = false
-    const refresh = async () => {
-      const next = await fetchQuotaSnapshot()
+    const reload = async () => {
+      const next = await fetchQuotaSnapshot(true)
       if (!disposed) setSnapshot(next)
     }
-    void refresh()
-    const timer = setInterval(() => void refresh(), 60_000)
+    void reload()
+    const timer = setInterval(() => void reload(), 60_000)
     onCleanup(() => {
       disposed = true
       clearInterval(timer)
@@ -306,7 +326,8 @@ export function QuotaPanel(props: { api: TuiPluginApi; width?: number }) {
   const groups = () => {
     const grouped = new Map<string, QuotaSnapshot["rows"]>()
     for (const row of rows()) {
-      const key = row.account ?? row.provider
+      const service = row.service ?? row.provider
+      const key = row.account ? `${service} - ${row.account}` : service
       grouped.set(key, [...(grouped.get(key) ?? []), row])
     }
     return [...grouped.entries()].map(([account, items]) => ({ account, items }))
@@ -314,7 +335,7 @@ export function QuotaPanel(props: { api: TuiPluginApi; width?: number }) {
   const itemLabel = (row: QuotaSnapshot["rows"][number]) => {
     const prefix = `${row.provider} `
     const name = row.name.startsWith(prefix) ? row.name.slice(prefix.length) : row.name
-    return `${row.provider} · ${name}`
+    return name
   }
   const toggleAccount = (account: string) => setCollapsedAccounts((current) => {
     const next = new Set(current)
@@ -338,6 +359,14 @@ export function QuotaPanel(props: { api: TuiPluginApi; width?: number }) {
     <SectionTitle api={props.api} title="Quota" right={() => snapshot() ? `${snapshot()!.providerCount}` : "..."} width={width()} native collapsed={collapsed()} onToggle={() => setCollapsed(!collapsed())} />
     {!collapsed() && (
       <>
+        <box width="100%" paddingLeft={1} paddingRight={1} focusable onMouseDown={() => void refresh(true)} onKeyDown={(event) => {
+          if (event.eventType !== "press" || (event.name !== "return" && event.name !== "enter" && event.name !== "space")) return
+          event.preventDefault()
+          event.stopPropagation()
+          void refresh(true)
+        }}>
+          <text fg={refreshing() ? props.api.theme.current.textMuted : props.api.theme.current.accent}>{() => refreshing() ? "Refreshing..." : "[ Refresh quota ]"}</text>
+        </box>
         <For each={groups()}>
           {(group, groupIndex) => (
             <box width="100%" flexDirection="column" marginTop={groupIndex() === 0 ? 0 : 1} backgroundColor={groupIndex() % 2 === 0 ? props.api.theme.current.backgroundPanel : props.api.theme.current.backgroundElement} paddingLeft={1} paddingRight={1}>

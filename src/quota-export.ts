@@ -1,9 +1,10 @@
 import { readFile } from "node:fs/promises"
 import { homedir } from "node:os"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
 
 export type QuotaRow = {
   provider: string
+  service?: string
   account?: string
   name: string
   value: string
@@ -30,6 +31,17 @@ function jwtAccountID(token: string): string | undefined {
     if (!raw) return undefined
     const payload = JSON.parse(Buffer.from(raw.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"))
     return payload?.["https://api.openai.com/auth"]?.chatgpt_account_id
+  } catch {
+    return undefined
+  }
+}
+
+function jwtEmail(token: string): string | undefined {
+  try {
+    const raw = token.split(".")[1]
+    if (!raw) return undefined
+    const payload = JSON.parse(Buffer.from(raw.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"))
+    return typeof payload?.email === "string" ? payload.email : undefined
   } catch {
     return undefined
   }
@@ -76,7 +88,8 @@ async function fetchOpenAI(auth: PlainObject): Promise<QuotaRow[]> {
         signal: controller.signal,
       })
       if (!response.ok) return []
-      return parseOpenAIUsage(await response.json())
+      const account = jwtEmail(entry.access) ?? (typeof entry.email === "string" ? entry.email : undefined)
+      return parseOpenAIUsage(await response.json()).map((row) => ({ ...row, account }))
     } finally {
       clearTimeout(timer)
     }
@@ -138,11 +151,10 @@ function modelProvider(key: string): string {
   return "Google"
 }
 
-export function maskAccount(value: unknown, index: number): string {
-  if (typeof value !== "string" || !value.includes("@")) return `Account ${index + 1}`
-  const [local, domain] = value.split("@")
-  if (!local || !domain) return `Account ${index + 1}`
-  return `${local.slice(0, 1)}${"*".repeat(Math.min(3, Math.max(1, local.length - 1)))}@${domain}`
+export function opencodeConfigDir(env: NodeJS.ProcessEnv = process.env, home = homedir()): string {
+  if (env.OPENCODE_CONFIG_DIR) return resolve(env.OPENCODE_CONFIG_DIR)
+  if (env.XDG_CONFIG_HOME) return resolve(env.XDG_CONFIG_HOME, "opencode")
+  return resolve(home, ".config", "opencode")
 }
 
 export function parseAntigravityAccounts(value: unknown): QuotaRow[] {
@@ -154,7 +166,7 @@ export function parseAntigravityAccounts(value: unknown): QuotaRow[] {
 
   accounts.forEach((account, accountIndex) => {
     if (!account?.enabled || !object(account.cachedQuota)) return
-    const accountName = maskAccount(account.email, accountIndex)
+    const accountName = typeof account.email === "string" && account.email.length > 0 ? account.email : `Account ${accountIndex + 1}`
     const updatedAt = typeof account.cachedQuotaUpdatedAt === "number" ? account.cachedQuotaUpdatedAt : undefined
     for (const [modelKey, raw] of Object.entries(account.cachedQuota)) {
       const quota = object(raw)
@@ -167,6 +179,7 @@ export function parseAntigravityAccounts(value: unknown): QuotaRow[] {
       const percent = Math.round(Math.max(0, Math.min(1, quota.remainingFraction)) * 100)
       rows.push({
         provider: modelProvider(modelKey),
+        service: "Antigravity",
         account: accountName,
         name: `${modelDisplayName(modelKey)}${active}`,
         value: `${percent} % left`,
@@ -182,7 +195,7 @@ export function parseAntigravityAccounts(value: unknown): QuotaRow[] {
 
 async function readAntigravity(): Promise<QuotaRow[]> {
   try {
-    const data = JSON.parse(await readFile(join(homedir(), ".config", "opencode", "antigravity-accounts.json"), "utf8"))
+    const data = JSON.parse(await readFile(join(opencodeConfigDir(), "antigravity-accounts.json"), "utf8"))
     return parseAntigravityAccounts(data)
   } catch {
     return []

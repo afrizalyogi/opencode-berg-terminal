@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import { describe, test } from "node:test"
-import { maskAccount, parseAntigravityAccounts, parseOpenAIUsage } from "./quota-export.ts"
+import { resolve } from "node:path"
+import { opencodeConfigDir, parseAntigravityAccounts, parseOpenAIUsage } from "./quota-export.ts"
 
 describe("standalone quota parser", () => {
   test("distinguishes OpenAI 5 hour and weekly windows", () => {
@@ -33,17 +34,18 @@ describe("standalone quota parser", () => {
 
     assert.equal(result.length, 4)
     assert.deepEqual(result.map((row) => [row.account, row.provider, row.name, row.value]), [
-      ["a***@example.com", "Anthropic", "Claude [active]", "25 % left"],
-      ["a***@example.com", "Google", "Gemini Pro", "50 % left"],
-      ["b***@example.com", "Anthropic", "Claude", "75 % left"],
-      ["b***@example.com", "Google", "Gemini Pro [active]", "100 % left"],
+      ["alpha@example.com", "Anthropic", "Claude [active]", "25 % left"],
+      ["alpha@example.com", "Google", "Gemini Pro", "50 % left"],
+      ["beta@example.com", "Anthropic", "Claude", "75 % left"],
+      ["beta@example.com", "Google", "Gemini Pro [active]", "100 % left"],
     ])
     assert.deepEqual(result.map((row) => row.percent), [25, 50, 75, 100])
     assert.equal(result[0]?.updatedAt, 1234)
   })
 
-  test("masks account emails and falls back to an index label", () => {
-    assert.equal(maskAccount("person@example.com", 0), "p***@example.com")
-    assert.equal(maskAccount(undefined, 2), "Account 3")
+  test("resolves the Antigravity config directory across platforms", () => {
+    assert.equal(opencodeConfigDir({ OPENCODE_CONFIG_DIR: "C:/custom" } as NodeJS.ProcessEnv, "C:/Users/example"), resolve("C:/custom"))
+    assert.equal(opencodeConfigDir({ XDG_CONFIG_HOME: "/tmp/config" } as NodeJS.ProcessEnv, "/home/example"), resolve("/tmp/config", "opencode"))
+    assert.equal(opencodeConfigDir({} as NodeJS.ProcessEnv, "/home/example"), resolve("/home/example", ".config", "opencode"))
   })
 })
