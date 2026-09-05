@@ -11,9 +11,8 @@ A responsive OpenCode TUI for monitoring agents, executions, usage, quota, and c
 ## Automatic install
 
 ```bash
-npm install
-npm run install:check
-npm run install:local -- --apply
+node scripts/install.mjs
+node scripts/install.mjs --apply
 ```
 
 The check command is a dry run. The apply command updates `~/.config/opencode/tui.json`, preserves unrelated settings, and creates a backup before replacing an existing file. Fully quit and restart OpenCode afterward.
@@ -21,9 +20,9 @@ The check command is a dry run. The apply command updates `~/.config/opencode/tu
 Useful options:
 
 ```bash
-npm run install:local -- --apply --no-theme
-npm run install:local -- --apply --keep-current-theme
-npm run install:local -- --apply --config-dir /absolute/config/path
+node scripts/install.mjs --apply --no-theme
+node scripts/install.mjs --apply --keep-current-theme
+node scripts/install.mjs --apply --config-dir /absolute/config/path
 ```
 
 ## Manual install

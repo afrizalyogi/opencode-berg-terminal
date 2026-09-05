@@ -12,11 +12,11 @@
   "oc-plugin": [
     "tui"
   ],
-  "main": "./tui.tsx",
+  "main": "./index.tsx",
   "exports": {
-    ".": "./tui.tsx",
-    "./tui": "./tui.tsx",
-    "./theme": "./themes/berg-terminal.json"
+    ".": "./index.tsx",
+    "./theme": "./themes/berg-terminal.json",
+    "./tui": "./tui.tsx"
   },
   "files": [
     "tui.tsx",
