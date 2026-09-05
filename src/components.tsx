@@ -302,20 +302,37 @@ export function QuotaPanel(props: { api: TuiPluginApi; width?: number }) {
     })
   })
   const rows = () => snapshot()?.rows ?? []
+  const groups = () => {
+    const grouped = new Map<string, QuotaSnapshot["rows"]>()
+    for (const row of rows()) {
+      const key = row.account ?? row.provider
+      grouped.set(key, [...(grouped.get(key) ?? []), row])
+    }
+    return [...grouped.entries()].map(([account, items]) => ({ account, items }))
+  }
+  const itemLabel = (row: QuotaSnapshot["rows"][number]) => {
+    const prefix = `${row.provider} `
+    const name = row.name.startsWith(prefix) ? row.name.slice(prefix.length) : row.name
+    return `${row.provider} · ${name}`
+  }
   return <box flexDirection="column" width="100%">
     <SectionTitle api={props.api} title="Quota" right={() => snapshot() ? `${snapshot()!.providerCount}` : "..."} width={width()} native collapsed={collapsed()} onToggle={() => setCollapsed(!collapsed())} />
     {!collapsed() && (
       <>
-        <For each={rows().slice(0, 12)}>
-          {(row, index) => {
-            const displayName = row.name.toLowerCase().includes(row.provider.toLowerCase()) ? row.name : `${row.provider} ${row.name}`
-            return (
-              <box width="100%" flexDirection="row" justifyContent="space-between" backgroundColor={index() % 2 === 0 ? props.api.theme.current.backgroundPanel : props.api.theme.current.backgroundElement}>
-                <text fg={props.api.theme.current.text}>{displayName}</text>
-                <text fg={props.api.theme.current.text}>{row.value}</text>
-              </box>
-            )
-          }}
+        <For each={groups()}>
+          {(group, groupIndex) => (
+            <box width="100%" flexDirection="column" backgroundColor={groupIndex() % 2 === 0 ? props.api.theme.current.backgroundPanel : props.api.theme.current.backgroundElement} paddingLeft={1} paddingRight={1}>
+              <text fg={props.api.theme.current.accent} attributes={1} wrapMode="word">{group.account}</text>
+              <For each={group.items}>
+                {(row) => (
+                  <box width="100%" flexDirection="column" marginTop={1}>
+                    <text fg={props.api.theme.current.text} wrapMode="word">{itemLabel(row)}</text>
+                    <text fg={props.api.theme.current.textMuted} wrapMode="word">{row.value}</text>
+                  </box>
+                )}
+              </For>
+            </box>
+          )}
         </For>
         {!snapshot() && <text fg={props.api.theme.current.textMuted}>Loading quota...</text>}
         {snapshot() && rows().length === 0 && <text fg={props.api.theme.current.textMuted}>No quota data yet</text>}

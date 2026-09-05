@@ -12,8 +12,8 @@ describe("standalone quota parser", () => {
       },
     })
     assert.deepEqual(result.map((row) => [row.name, row.value]), [
-      ["OpenAI (Plus) 5 hour", "9% left"],
-      ["OpenAI (Plus) Weekly", "72% left"],
+      ["OpenAI (Plus) 5 hour", "9 % left"],
+      ["OpenAI (Plus) Weekly", "72 % left"],
     ])
   })
 
@@ -32,11 +32,11 @@ describe("standalone quota parser", () => {
     })
 
     assert.equal(result.length, 4)
-    assert.deepEqual(result.map((row) => [row.provider, row.name, row.value]), [
-      ["Anthropic", "Claude · a***@example.com [active]", "25% left"],
-      ["Anthropic", "Claude · b***@example.com", "75% left"],
-      ["Google", "Gemini Pro · a***@example.com", "50% left"],
-      ["Google", "Gemini Pro · b***@example.com [active]", "100% left"],
+    assert.deepEqual(result.map((row) => [row.account, row.provider, row.name, row.value]), [
+      ["a***@example.com", "Anthropic", "Claude [active]", "25 % left"],
+      ["a***@example.com", "Google", "Gemini Pro", "50 % left"],
+      ["b***@example.com", "Anthropic", "Claude", "75 % left"],
+      ["b***@example.com", "Google", "Gemini Pro [active]", "100 % left"],
     ])
   })
 

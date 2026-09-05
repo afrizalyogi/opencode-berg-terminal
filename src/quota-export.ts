@@ -4,6 +4,7 @@ import { join } from "node:path"
 
 export type QuotaRow = {
   provider: string
+  account?: string
   name: string
   value: string
   resetAt?: number
@@ -48,7 +49,7 @@ export function parseOpenAIUsage(value: unknown): QuotaRow[] {
     rows.push({
       provider: "OpenAI",
       name: `${planLabel} ${label}`,
-      value: `${remaining}% left`,
+      value: `${remaining} % left`,
       resetAt: typeof window.reset_at === "number" ? window.reset_at : undefined,
     })
   }
@@ -99,7 +100,7 @@ async function fetchOpenRouter(auth: PlainObject): Promise<QuotaRow[]> {
       const rows: QuotaRow[] = []
       if (typeof data.limit === "number" && typeof data.usage === "number") {
         const pct = Math.round(Math.max(0, Math.min(100, (1 - data.usage / data.limit) * 100)))
-        rows.push({ provider: "OpenRouter", name: "Credit limit", value: `${pct}% left` })
+        rows.push({ provider: "OpenRouter", name: "Credit limit", value: `${pct} % left` })
       }
       if (typeof data.balance === "number") {
         rows.push({ provider: "OpenRouter", name: "Balance", value: `$${data.balance.toFixed(3)}` })
@@ -161,14 +162,15 @@ export function parseAntigravityAccounts(value: unknown): QuotaRow[] {
       const resetAt = typeof quota.resetTime === "string" ? Date.parse(quota.resetTime) / 1000 : undefined
       rows.push({
         provider: modelProvider(modelKey),
-        name: `${modelDisplayName(modelKey)} · ${accountName}${active}`,
-        value: `${Math.round(Math.max(0, Math.min(1, quota.remainingFraction)) * 100)}% left`,
+        account: accountName,
+        name: `${modelDisplayName(modelKey)}${active}`,
+        value: `${Math.round(Math.max(0, Math.min(1, quota.remainingFraction)) * 100)} % left`,
         resetAt: Number.isFinite(resetAt) ? resetAt : undefined,
       })
     }
   })
 
-  return rows.sort((left, right) => left.provider.localeCompare(right.provider) || left.name.localeCompare(right.name))
+  return rows.sort((left, right) => (left.account ?? left.provider).localeCompare(right.account ?? right.provider) || left.provider.localeCompare(right.provider) || left.name.localeCompare(right.name))
 }
 
 async function readAntigravity(): Promise<QuotaRow[]> {
