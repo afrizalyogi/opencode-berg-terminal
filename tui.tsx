@@ -179,7 +179,7 @@ const tui: TuiPlugin = async (api) => {
           return null
         },
         home_prompt(_ctx, props) {
-          return <CommandEntry api={api} prompt={{ workspaceID: props.workspace_id, ref: props.ref }} />
+          return <api.ui.Prompt workspaceID={props.workspace_id} ref={props.ref} showPlaceholder placeholders={{ normal: ["Describe a task or enter /command"], shell: ["Enter a shell command"] }} />
         },
         session_prompt(_ctx, props) {
           return <CommandEntry api={api} prompt={{ sessionID: props.session_id, visible: props.visible, disabled: props.disabled, onSubmit: props.on_submit, ref: props.ref,
