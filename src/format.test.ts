@@ -39,6 +39,7 @@ describe("Berg Terminal formatting", () => {
     assert.equal(money(undefined), "Unavailable")
     assert.equal(money(0), "$0.0000")
     assert.equal(duration(0, 65_000, 100_000), "01:05")
+    assert.equal(duration(0, 4_000, 100_000), "4 S")
   })
 
   test("uses compact status labels and gives data columns more room", () => {

@@ -73,7 +73,7 @@ export function money(value: number | undefined): string {
 
 export function duration(startedAt: number, endedAt: number | undefined, now: number): string {
   const seconds = Math.max(0, Math.floor(((endedAt ?? now) - startedAt) / 1000))
-  if (seconds < 60) return `${seconds.toString().padStart(2, "0")}S`
+  if (seconds < 60) return `${seconds} S`
   const minutes = Math.floor(seconds / 60)
   if (minutes < 60) return `${minutes.toString().padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`
   return `${Math.floor(minutes / 60)}:${(minutes % 60).toString().padStart(2, "0")}`
