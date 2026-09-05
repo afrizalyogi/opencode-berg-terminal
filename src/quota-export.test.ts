@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { describe, test } from "node:test"
 import { resolve } from "node:path"
-import { opencodeConfigDir, parseAntigravityAccounts, parseOpenAIUsage } from "./quota-export.ts"
+import { maskEmail, opencodeConfigDir, parseAntigravityAccounts, parseOpenAIUsage } from "./quota-export.ts"
 
 describe("standalone quota parser", () => {
   test("distinguishes OpenAI 5 hour and weekly windows", () => {
@@ -34,13 +34,23 @@ describe("standalone quota parser", () => {
 
     assert.equal(result.length, 4)
     assert.deepEqual(result.map((row) => [row.account, row.provider, row.name, row.value]), [
-      ["alpha@example.com", "Anthropic", "Claude [active]", "25 % left"],
-      ["alpha@example.com", "Google", "Gemini Pro", "50 % left"],
-      ["beta@example.com", "Anthropic", "Claude", "75 % left"],
-      ["beta@example.com", "Google", "Gemini Pro [active]", "100 % left"],
+      ["alp***ha@example.com", "Anthropic", "Claude [active]", "25 % left"],
+      ["alp***ha@example.com", "Google", "Gemini Pro", "50 % left"],
+      ["bet***a@example.com", "Anthropic", "Claude", "75 % left"],
+      ["bet***a@example.com", "Google", "Gemini Pro [active]", "100 % left"],
     ])
     assert.deepEqual(result.map((row) => row.percent), [25, 50, 75, 100])
     assert.equal(result[0]?.updatedAt, 1234)
+  })
+
+  test("masks email correctly for various lengths", () => {
+    assert.equal(maskEmail("richiewillis729@gmail.com"), "ric***729@gmail.com")
+    assert.equal(maskEmail("admin@example.com"), "adm***in@example.com")
+    assert.equal(maskEmail("a@example.com"), "a***@example.com")
+    assert.equal(maskEmail("ab@example.com"), "ab***@example.com")
+    assert.equal(maskEmail("abc@example.com"), "abc***@example.com")
+    assert.equal(maskEmail("abcd@example.com"), "abc***d@example.com")
+    assert.equal(maskEmail("not-an-email"), undefined)
   })
 
   test("resolves the Antigravity config directory across platforms", () => {

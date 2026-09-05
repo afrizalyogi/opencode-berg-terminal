@@ -88,7 +88,7 @@ async function fetchOpenAI(auth: PlainObject): Promise<QuotaRow[]> {
         signal: controller.signal,
       })
       if (!response.ok) return []
-      const account = jwtEmail(entry.access) ?? (typeof entry.email === "string" ? entry.email : undefined)
+      const account = maskEmail(jwtEmail(entry.access) ?? entry.email)
       return parseOpenAIUsage(await response.json()).map((row) => ({ ...row, account }))
     } finally {
       clearTimeout(timer)
@@ -151,6 +151,15 @@ function modelProvider(key: string): string {
   return "Google"
 }
 
+export function maskEmail(value: unknown): string | undefined {
+  if (typeof value !== "string" || !value.includes("@")) return undefined
+  const [local, domain] = value.split("@")
+  if (!local || !domain) return undefined
+  const head = local.slice(0, Math.min(3, local.length))
+  const tail = local.length > 3 ? local.slice(-Math.min(3, local.length - 3)) : ""
+  return `${head}***${tail}@${domain}`
+}
+
 export function opencodeConfigDir(env: NodeJS.ProcessEnv = process.env, home = homedir()): string {
   if (env.OPENCODE_CONFIG_DIR) return resolve(env.OPENCODE_CONFIG_DIR)
   if (env.XDG_CONFIG_HOME) return resolve(env.XDG_CONFIG_HOME, "opencode")
@@ -166,7 +175,7 @@ export function parseAntigravityAccounts(value: unknown): QuotaRow[] {
 
   accounts.forEach((account, accountIndex) => {
     if (!account?.enabled || !object(account.cachedQuota)) return
-    const accountName = typeof account.email === "string" && account.email.length > 0 ? account.email : `Account ${accountIndex + 1}`
+    const accountName = maskEmail(account.email) ?? `Account ${accountIndex + 1}`
     const updatedAt = typeof account.cachedQuotaUpdatedAt === "number" ? account.cachedQuotaUpdatedAt : undefined
     for (const [modelKey, raw] of Object.entries(account.cachedQuota)) {
       const quota = object(raw)
