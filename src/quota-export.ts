@@ -7,7 +7,9 @@ export type QuotaRow = {
   account?: string
   name: string
   value: string
+  percent?: number
   resetAt?: number
+  updatedAt?: number
 }
 
 export type QuotaSnapshot = {
@@ -50,6 +52,7 @@ export function parseOpenAIUsage(value: unknown): QuotaRow[] {
       provider: "OpenAI",
       name: `${planLabel} ${label}`,
       value: `${remaining} % left`,
+      percent: remaining,
       resetAt: typeof window.reset_at === "number" ? window.reset_at : undefined,
     })
   }
@@ -100,7 +103,7 @@ async function fetchOpenRouter(auth: PlainObject): Promise<QuotaRow[]> {
       const rows: QuotaRow[] = []
       if (typeof data.limit === "number" && typeof data.usage === "number") {
         const pct = Math.round(Math.max(0, Math.min(100, (1 - data.usage / data.limit) * 100)))
-        rows.push({ provider: "OpenRouter", name: "Credit limit", value: `${pct} % left` })
+        rows.push({ provider: "OpenRouter", name: "Credit limit", value: `${pct} % left`, percent: pct })
       }
       if (typeof data.balance === "number") {
         rows.push({ provider: "OpenRouter", name: "Balance", value: `$${data.balance.toFixed(3)}` })
@@ -152,6 +155,7 @@ export function parseAntigravityAccounts(value: unknown): QuotaRow[] {
   accounts.forEach((account, accountIndex) => {
     if (!account?.enabled || !object(account.cachedQuota)) return
     const accountName = maskAccount(account.email, accountIndex)
+    const updatedAt = typeof account.cachedQuotaUpdatedAt === "number" ? account.cachedQuotaUpdatedAt : undefined
     for (const [modelKey, raw] of Object.entries(account.cachedQuota)) {
       const quota = object(raw)
       if (!quota || typeof quota.remainingFraction !== "number") continue
@@ -160,12 +164,15 @@ export function parseAntigravityAccounts(value: unknown): QuotaRow[] {
       const activeIndex = activeIndexByFamily[baseFamily] ?? activeIndexByFamily[family]
       const active = activeIndex === accountIndex ? " [active]" : ""
       const resetAt = typeof quota.resetTime === "string" ? Date.parse(quota.resetTime) / 1000 : undefined
+      const percent = Math.round(Math.max(0, Math.min(1, quota.remainingFraction)) * 100)
       rows.push({
         provider: modelProvider(modelKey),
         account: accountName,
         name: `${modelDisplayName(modelKey)}${active}`,
-        value: `${Math.round(Math.max(0, Math.min(1, quota.remainingFraction)) * 100)} % left`,
+        value: `${percent} % left`,
+        percent,
         resetAt: Number.isFinite(resetAt) ? resetAt : undefined,
+        updatedAt,
       })
     }
   })

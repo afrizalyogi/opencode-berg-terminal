@@ -25,7 +25,7 @@ describe("standalone quota parser", () => {
     const result = parseAntigravityAccounts({
       activeIndexByFamily: { claude: 0, gemini: 1 },
       accounts: [
-        { email: "alpha@example.com", enabled: true, cachedQuota: { claude: { remainingFraction: 0.25 }, "gemini-pro": { remainingFraction: 0.5 } } },
+        { email: "alpha@example.com", enabled: true, cachedQuotaUpdatedAt: 1234, cachedQuota: { claude: { remainingFraction: 0.25 }, "gemini-pro": { remainingFraction: 0.5 } } },
         { email: "beta@example.com", enabled: true, cachedQuota: { claude: { remainingFraction: 0.75 }, "gemini-pro": { remainingFraction: 1 } } },
         { email: "disabled@example.com", enabled: false, cachedQuota: { claude: { remainingFraction: 1 } } },
       ],
@@ -38,6 +38,8 @@ describe("standalone quota parser", () => {
       ["b***@example.com", "Anthropic", "Claude", "75 % left"],
       ["b***@example.com", "Google", "Gemini Pro [active]", "100 % left"],
     ])
+    assert.deepEqual(result.map((row) => row.percent), [25, 50, 75, 100])
+    assert.equal(result[0]?.updatedAt, 1234)
   })
 
   test("masks account emails and falls back to an index label", () => {

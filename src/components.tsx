@@ -288,6 +288,7 @@ export function QuotaPanel(props: { api: TuiPluginApi; width?: number }) {
   const width = () => props.width ?? 31
   const [collapsed, setCollapsed] = createSignal(false)
   const [snapshot, setSnapshot] = createSignal<QuotaSnapshot>()
+  const [collapsedAccounts, setCollapsedAccounts] = createSignal<Set<string>>(new Set())
   onMount(() => {
     let disposed = false
     const refresh = async () => {
@@ -315,22 +316,45 @@ export function QuotaPanel(props: { api: TuiPluginApi; width?: number }) {
     const name = row.name.startsWith(prefix) ? row.name.slice(prefix.length) : row.name
     return `${row.provider} · ${name}`
   }
+  const toggleAccount = (account: string) => setCollapsedAccounts((current) => {
+    const next = new Set(current)
+    if (next.has(account)) next.delete(account)
+    else next.add(account)
+    return next
+  })
+  const cacheAge = (items: QuotaSnapshot["rows"]) => {
+    const updatedAt = Math.max(...items.map((item) => item.updatedAt ?? 0))
+    if (updatedAt <= 0) return ""
+    const minutes = Math.max(0, Math.floor((Date.now() - updatedAt) / 60_000))
+    return minutes < 1 ? "cached now" : `cached ${minutes} min ago`
+  }
+  const toggleAccountKey = (event: KeyEvent, account: string) => {
+    if (event.eventType !== "press" || (event.name !== "return" && event.name !== "enter" && event.name !== "space")) return
+    event.preventDefault()
+    event.stopPropagation()
+    toggleAccount(account)
+  }
   return <box flexDirection="column" width="100%">
     <SectionTitle api={props.api} title="Quota" right={() => snapshot() ? `${snapshot()!.providerCount}` : "..."} width={width()} native collapsed={collapsed()} onToggle={() => setCollapsed(!collapsed())} />
     {!collapsed() && (
       <>
         <For each={groups()}>
           {(group, groupIndex) => (
-            <box width="100%" flexDirection="column" backgroundColor={groupIndex() % 2 === 0 ? props.api.theme.current.backgroundPanel : props.api.theme.current.backgroundElement} paddingLeft={1} paddingRight={1}>
-              <text fg={props.api.theme.current.accent} attributes={1} wrapMode="word">{group.account}</text>
-              <For each={group.items}>
-                {(row) => (
-                  <box width="100%" flexDirection="column" marginTop={1}>
-                    <text fg={props.api.theme.current.text} wrapMode="word">{itemLabel(row)}</text>
-                    <text fg={props.api.theme.current.textMuted} wrapMode="word">{row.value}</text>
-                  </box>
-                )}
-              </For>
+            <box width="100%" flexDirection="column" marginTop={groupIndex() === 0 ? 0 : 1} backgroundColor={groupIndex() % 2 === 0 ? props.api.theme.current.backgroundPanel : props.api.theme.current.backgroundElement} paddingLeft={1} paddingRight={1}>
+              <box width="100%" flexDirection="column" focusable onMouseDown={() => toggleAccount(group.account)} onKeyDown={(event) => toggleAccountKey(event, group.account)}>
+                <text fg={props.api.theme.current.accent} attributes={1} wrapMode="word">{() => `${collapsedAccounts().has(group.account) ? "+" : "v"} ${group.account}`}</text>
+                <Show when={cacheAge(group.items)}>{(age) => <text fg={props.api.theme.current.textMuted} wrapMode="word">{age()}</text>}</Show>
+              </box>
+              <Show when={!collapsedAccounts().has(group.account)}>
+                <For each={group.items}>
+                  {(row) => (
+                    <box width="100%" flexDirection="column" marginTop={1}>
+                      <text fg={props.api.theme.current.text} wrapMode="word">{itemLabel(row)}</text>
+                      <text fg={props.api.theme.current.textMuted}>{() => row.percent === undefined ? row.value : `${bar(row.percent, 100, Math.max(6, width() - 12), "unicode")}  ${row.percent} %`}</text>
+                    </box>
+                  )}
+                </For>
+              </Show>
             </box>
           )}
         </For>
