@@ -1,7 +1,7 @@
 import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
-import { createSignal } from "solid-js"
 import { sanitizeLine, shortModel } from "./format.ts"
 import type { ExecutionEntry, ExecutionRow, ExecutionStatus } from "./types.ts"
+import { diagnostic } from "./diagnostic.ts"
 
 type PendingInput = { description?: unknown; prompt?: unknown; subagent_type?: unknown }
 
@@ -12,6 +12,11 @@ export interface ExecutionTracker {
   reconcile(parentID: string): Promise<void>
   dispose(): void
   hasRunning(parentID?: string): boolean
+}
+
+export interface ExecutionTrackerReactivity {
+  read(): void
+  invalidate(): void
 }
 
 function targetSessionID(part: { state: Record<string, unknown> }): string | undefined {
@@ -25,9 +30,19 @@ function targetSessionID(part: { state: Record<string, unknown> }): string | und
   return undefined
 }
 
-export function createExecutionTracker(api: TuiPluginApi): ExecutionTracker {
-  const [entries, setEntries] = createSignal<Map<string, ExecutionEntry>>(new Map())
-  const [tick, setTick] = createSignal(0)
+function terminalTime(part: any, fallback: number): number {
+  const time = part?.state?.time
+  if (typeof time === "object" && time !== null) {
+    for (const key of ["end", "ended", "completed", "updated"]) {
+      const value = time[key]
+      if (typeof value === "number" && Number.isFinite(value) && value > 0) return value
+    }
+  }
+  return fallback
+}
+
+export function createExecutionTracker(api: TuiPluginApi, reactivity?: ExecutionTrackerReactivity): ExecutionTracker {
+  let entries = new Map<string, ExecutionEntry>()
   const disposers: Array<() => void> = []
   const hydrated = new Set<string>()
   const hydration = new Map<string, Promise<void>>()
@@ -35,7 +50,14 @@ export function createExecutionTracker(api: TuiPluginApi): ExecutionTracker {
   const reconciledAt = new Map<string, number>()
   const nextCalls = new Map<string, { parentID: string; title: string; agent?: string; startedAt: number }>()
 
-  const updateTick = () => setTick(t => t + 1)
+  const setEntries = (update: (current: Map<string, ExecutionEntry>) => Map<string, ExecutionEntry>) => {
+    entries = update(entries)
+  }
+  const updateTick = () => reactivity?.invalidate()
+
+  const snapshot = (parentID?: string) => [...entries.values()]
+    .filter((entry) => !parentID || entry.parentID === parentID)
+    .map((entry) => ({ id: entry.id, parentID: entry.parentID, sessionID: entry.sessionID, status: statusFor(entry), agent: entry.agent }))
 
   const update = (id: string, patch: Partial<ExecutionEntry> & Pick<ExecutionEntry, "parentID" | "title">) => {
     let changed = false
@@ -57,10 +79,14 @@ export function createExecutionTracker(api: TuiPluginApi): ExecutionTracker {
     if (!changed) return
     updateTick()
     api.renderer.requestRender()
+    diagnostic("tracker.update", { id, parentID: patch.parentID, rows: snapshot(patch.parentID) })
   }
 
   const registerSession = (session: { id: string; parentID?: string; title: string; agent?: string; time: { created: number } }) => {
-    if (!session.parentID) return
+    if (!session.parentID) {
+      diagnostic("tracker.session.ignored", { id: session.id, reason: "missing-parent" })
+      return
+    }
     setEntries((current) => {
       const next = new Map(current)
       const candidates = [...next.values()].filter((entry) =>
@@ -75,7 +101,7 @@ export function createExecutionTracker(api: TuiPluginApi): ExecutionTracker {
         parentID: session.parentID!,
         messageID: pending?.messageID ?? previous?.messageID,
         partID: pending?.partID ?? previous?.partID,
-        title: pending?.title || sanitizeLine(session.title) || "Delegated session",
+        title: pending?.title || previous?.title || sanitizeLine(session.title) || "Delegated session",
         summary: pending?.summary ?? previous?.summary,
         agent: pending?.agent ?? session.agent ?? previous?.agent,
         startedAt: pending?.startedAt ?? previous?.startedAt ?? session.time.created,
@@ -87,6 +113,7 @@ export function createExecutionTracker(api: TuiPluginApi): ExecutionTracker {
     })
     updateTick()
     api.renderer.requestRender()
+    diagnostic("tracker.session.registered", { id: session.id, parentID: session.parentID, agent: session.agent, rows: snapshot(session.parentID) })
   }
 
   const ingestPart = (part: any, eventTime = Date.now()) => {
@@ -107,6 +134,8 @@ export function createExecutionTracker(api: TuiPluginApi): ExecutionTracker {
     const sessionID = targetSessionID(part as { state: Record<string, unknown> })
     const id = sessionID ?? `pending:${part.id}`
     const status = part.state?.status
+    const previous = entries.get(id)
+    const terminal = status === "error" || status === "completed"
     update(id, {
       sessionID,
       parentID: part.sessionID,
@@ -119,12 +148,13 @@ export function createExecutionTracker(api: TuiPluginApi): ExecutionTracker {
         ? part.state.time.start
         : eventTime,
       terminalOverride: status === "error" ? "error" : status === "completed" ? "done" : undefined,
-      endedAt: status === "error" || status === "completed" ? eventTime : undefined,
+      endedAt: terminal ? previous?.endedAt ?? terminalTime(part, eventTime) : undefined,
     })
   }
 
   disposers.push(api.event.on("session.created", (event) => {
     const info = event.properties.info
+    diagnostic("event.session.created", { id: info.id, parentID: info.parentID, agent: info.agent })
     registerSession(info)
     // Immediately reconcile parent session to fetch any siblings we might have missed
     if (info.parentID) {
@@ -132,25 +162,32 @@ export function createExecutionTracker(api: TuiPluginApi): ExecutionTracker {
       setTimeout(() => { if (!api.lifecycle.signal.aborted) void reconcile(parentID) }, 200)
     }
   }))
-  disposers.push(api.event.on("session.updated", (event) => registerSession(event.properties.info)))
+  disposers.push(api.event.on("session.updated", (event) => {
+    const info = event.properties.info
+    diagnostic("event.session.updated", { id: info.id, parentID: info.parentID, agent: info.agent })
+    registerSession(info)
+  }))
   disposers.push(api.event.on("session.status", (event) => {
-    const previous = entries().get(event.properties.sessionID)
+    diagnostic("event.session.status", { id: event.properties.sessionID, status: event.properties.status.type, known: entries.has(event.properties.sessionID) })
+    const previous = entries.get(event.properties.sessionID)
     if (!previous) return
     if (event.properties.status.type === "busy" || event.properties.status.type === "retry") {
       update(previous.id, { ...previous, terminalOverride: undefined, endedAt: undefined })
     } else if (previous.terminalOverride !== "error") {
-      update(previous.id, { ...previous, terminalOverride: "done", endedAt: Date.now() })
+      update(previous.id, { ...previous, terminalOverride: "done", endedAt: previous.endedAt ?? Date.now() })
     }
   }))
   disposers.push(api.event.on("session.idle", (event) => {
-    const previous = entries().get(event.properties.sessionID)
-    if (previous && previous.terminalOverride !== "error") update(previous.id, { ...previous, terminalOverride: "done", endedAt: Date.now() })
+    diagnostic("event.session.idle", { id: event.properties.sessionID, known: entries.has(event.properties.sessionID) })
+    const previous = entries.get(event.properties.sessionID)
+    if (previous && previous.terminalOverride !== "error") update(previous.id, { ...previous, terminalOverride: "done", endedAt: previous.endedAt ?? Date.now() })
   }))
   disposers.push(api.event.on("session.error", (event) => {
     const id = event.properties.sessionID
+    diagnostic("event.session.error", { id, known: id ? entries.has(id) : false })
     if (!id) return
-    const previous = entries().get(id)
-    if (previous) update(previous.id, { ...previous, terminalOverride: "error", endedAt: Date.now() })
+    const previous = entries.get(id)
+    if (previous) update(previous.id, { ...previous, terminalOverride: "error", endedAt: previous.endedAt ?? Date.now() })
   }))
   disposers.push(api.event.on("session.deleted", (event) => {
     setEntries((current) => {
@@ -161,12 +198,17 @@ export function createExecutionTracker(api: TuiPluginApi): ExecutionTracker {
     updateTick()
   }))
   disposers.push(api.event.on("message.part.updated", (event) => {
-    ingestPart(event.properties.part, event.properties.time)
+    const part = event.properties.part as any
+    if (part?.type === "subtask" || (part?.type === "tool" && (part?.tool === "task" || part?.tool === "delegate"))) {
+      diagnostic("event.message.part.updated", { partID: part.id, parentID: part.sessionID, messageID: part.messageID, type: part.type, tool: part.tool, status: part.state?.status, targetSessionID: part.type === "tool" && part.state ? targetSessionID(part) : undefined })
+    }
+    ingestPart(part, event.properties.time)
   }))
   const onEvent = api.event.on as unknown as (name: string, handler: (event: any) => void) => () => void
   disposers.push(onEvent("session.next.tool.called", (event) => {
     const props = event.properties
     if (props?.tool !== "task" && props?.tool !== "delegate") return
+    diagnostic("event.session.next.tool.called", { callID: props.callID, parentID: props.sessionID, tool: props.tool })
     const input = (props.input ?? {}) as PendingInput
     const title = sanitizeLine(input.description ?? input.subagent_type) || "DELEGATED TASK"
     const agent = typeof input.subagent_type === "string" ? input.subagent_type : undefined
@@ -278,11 +320,13 @@ export function createExecutionTracker(api: TuiPluginApi): ExecutionTracker {
       try {
         const response = await api.client.session.children({ sessionID: parentID, directory: api.state.path.directory })
         if (api.lifecycle.signal.aborted) return
+        diagnostic("tracker.reconcile.response", { parentID, childIDs: (response.data ?? []).map((session) => session.id) })
         for (const session of response.data ?? []) registerSession(session)
         // Always force a tick+render after fetching children so the UI reflects current state
         updateTick()
         api.renderer.requestRender()
-      } catch {
+      } catch (error) {
+        diagnostic("tracker.reconcile.error", { parentID, error: error instanceof Error ? error.message : String(error) })
         // local state reconciliation via ingestPart above is still available
       } finally {
         hydration.delete(parentID)
@@ -294,16 +338,16 @@ export function createExecutionTracker(api: TuiPluginApi): ExecutionTracker {
 
   return {
     rows(parentID) {
-      tick()
-      return [...entries().values()]
+      reactivity?.read()
+      return [...entries.values()]
         .filter((entry) => !parentID || entry.parentID === parentID)
         .map(project)
         .sort((a, b) => (a.status === "running" ? 0 : 1) - (b.status === "running" ? 0 : 1) || b.startedAt - a.startedAt)
     },
     counts(parentID) {
-      tick()
+      reactivity?.read()
       const counts = { running: 0, done: 0, error: 0, total: 0 }
-      for (const entry of entries().values()) {
+      for (const entry of entries.values()) {
         if (parentID && entry.parentID !== parentID) continue
         counts[statusFor(entry)]++
         counts.total++
@@ -313,6 +357,6 @@ export function createExecutionTracker(api: TuiPluginApi): ExecutionTracker {
     hydrate,
     reconcile,
     dispose() { for (const dispose of disposers) dispose() },
-    hasRunning(parentID) { return [...entries().values()].some((entry) => (!parentID || entry.parentID === parentID) && statusFor(entry) === "running") },
+    hasRunning(parentID) { return [...entries.values()].some((entry) => (!parentID || entry.parentID === parentID) && statusFor(entry) === "running") },
   }
 }

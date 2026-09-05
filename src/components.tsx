@@ -11,6 +11,7 @@ import { columns, duration, layoutFor, metric, money, padLeft, padRight, statusL
 import { fetchQuotaSnapshot, type QuotaSnapshot } from "./quota-export"
 import type { ExecutionTracker } from "./tracker"
 import type { ChartCharset, ChartMode, ExecutionStatus, ExecutionRow, AgentRow } from "./types"
+import { diagnostic } from "./diagnostic"
 
 type Props = {
   api: TuiPluginApi
@@ -168,6 +169,10 @@ export function AgentMatrix(props: Props & { width?: number; limit?: number }) {
   }
   const width = () => props.width ?? 31
   const [collapsed, setCollapsed] = createSignal(false)
+  createEffect(() => {
+    const executions = props.tracker.rows(props.sessionID)
+    diagnostic("ui.agents.subscription", { parentID: props.sessionID, rows: executions.map((row) => ({ id: row.id, status: row.status, agent: row.agent })) })
+  })
   return (
     <box flexDirection="column" width="100%">
       <SectionTitle api={props.api} title="Agents" right={() => `${rows().length}`} width={width()} native={props.nativeSidebar} collapsed={collapsed()} onToggle={() => setCollapsed(!collapsed())} />
@@ -203,6 +208,11 @@ export function ExecutionBlotter(props: Props & { width?: number; limit?: number
   )
   const visibleRows = () => rows().slice(windowStart(), windowStart() + limit())
   const [collapsed, setCollapsed] = createSignal(false)
+
+  createEffect(() => {
+    const executions = props.tracker.rows(props.sessionID)
+    diagnostic("ui.executions.subscription", { parentID: props.sessionID, rows: executions.map((row) => ({ id: row.id, status: row.status, agent: row.agent })) })
+  })
   
   createEffect(() => {
     if (props.sessionID) void props.tracker.hydrate(props.sessionID)

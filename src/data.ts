@@ -1,7 +1,7 @@
 import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
-import type { AgentRow, SessionTelemetry } from "./types"
-import { safeNumber, shortModel } from "./format"
-import type { ExecutionTracker } from "./tracker"
+import type { AgentRow, SessionTelemetry } from "./types.ts"
+import { safeNumber, shortModel } from "./format.ts"
+import type { ExecutionTracker } from "./tracker.ts"
 
 export function sessionTelemetry(api: TuiPluginApi, sessionID: string, tick?: number): SessionTelemetry {
   if (tick !== undefined) tick // establish dependency
@@ -54,11 +54,13 @@ function fallbackCount(config: Record<string, unknown>): number {
 
 export function configuredAgents(api: TuiPluginApi, sessionID?: string, tracker?: ExecutionTracker): AgentRow[] {
   const running = new Set<string>()
+  const runtime = new Map<string, { displayName: string; model: string }>()
   if (tracker) {
     for (const row of tracker.rows(sessionID)) {
-      if (row.status === "running" && row.agent) {
-        running.add(row.agent.toLowerCase())
-      }
+      if (!row.agent) continue
+      const key = row.agent.toLowerCase()
+      runtime.set(key, { displayName: row.agent, model: row.model })
+      if (row.status === "running") running.add(key)
     }
   } else if (sessionID) {
     for (const message of api.state.session.messages(sessionID)) {
@@ -71,7 +73,7 @@ export function configuredAgents(api: TuiPluginApi, sessionID?: string, tracker?
     }
   }
 
-  return Object.entries(api.state.config.agent ?? {})
+  const configured = Object.entries(api.state.config.agent ?? {})
     .flatMap(([name, config]): AgentRow[] => {
       if (!config || config.disable || config.hidden) return []
       const raw = config as Record<string, unknown>
@@ -84,6 +86,17 @@ export function configuredAgents(api: TuiPluginApi, sessionID?: string, tracker?
         running: running.has(name.toLowerCase()),
       }]
     })
+
+  const configuredNames = new Set(configured.map((agent) => agent.name.toLowerCase()))
+  const discovered = [...runtime.entries()].flatMap(([key, agent]): AgentRow[] => configuredNames.has(key) ? [] : [{
+    name: agent.displayName,
+    mode: "subagent",
+    model: agent.model,
+    fallbackCount: 0,
+    running: running.has(key),
+  }])
+
+  return [...configured, ...discovered]
     .sort((a, b) => {
       const priority = (mode: AgentRow["mode"]) => mode === "primary" ? 0 : mode === "all" ? 1 : 2
       return priority(a.mode) - priority(b.mode) || a.name.localeCompare(b.name)

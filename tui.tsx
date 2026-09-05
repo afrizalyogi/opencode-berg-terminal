@@ -6,6 +6,7 @@ import { AgentMatrix, BergCommandCenter, CommandEntry, TerminalTabs, ExecutionBl
 import { columns } from "./src/format"
 import { createExecutionTracker } from "./src/tracker"
 import type { ChartCharset, ChartMode } from "./src/types"
+import { diagnostic, diagnosticInstance, diagnosticPath } from "./src/diagnostic"
 
 function param(params: Record<string, unknown> | undefined, key: string): string | undefined {
   const value = params?.[key]
@@ -37,7 +38,12 @@ function HomeBottomCounts(props: { api: TuiPluginApi; tracker: ReturnType<typeof
 
 const tui: TuiPlugin = async (api) => {
   createRoot((disposeRoot) => {
-    const tracker = createExecutionTracker(api)
+    diagnostic("tui.initialized", { path: diagnosticPath, instance: diagnosticInstance })
+    const [trackerRevision, setTrackerRevision] = createSignal(0)
+    const tracker = createExecutionTracker(api, {
+      read: () => { trackerRevision() },
+      invalidate: () => setTrackerRevision((revision) => revision + 1),
+    })
     const [selectedIndex, setSelectedIndex] = createSignal(0)
     const storedMode = api.kv.get<ChartMode>("berg.chart-mode", "tokens")
     const storedCharset = api.kv.get<ChartCharset>("berg.chart-charset", "ascii")
@@ -216,7 +222,9 @@ const tui: TuiPlugin = async (api) => {
 
     const renderEvents = ["message.updated", "message.part.updated", "session.created", "session.status", "session.idle", "session.error", "session.next.tool.called", "session.next.tool.success", "session.next.tool.failed"] as const
     let renderQueued = false
-    const requestActiveRender = () => {
+    const requestActiveRender = (event: unknown) => {
+      const kind = typeof event === "object" && event !== null && "type" in event ? String((event as { type: unknown }).type) : "unknown"
+      diagnostic("tui.render.requested", { event: kind })
       if (renderQueued) return
       renderQueued = true
       queueMicrotask(() => {
