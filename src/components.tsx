@@ -3,7 +3,7 @@
 import type { TuiPluginApi, TuiPromptProps } from "@opencode-ai/plugin/tui"
 import { useTerminalDimensions } from "@opentui/solid"
 import type { KeyEvent, MouseEvent } from "@opentui/core"
-import { createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
+import { createEffect, createMemo, createSignal, onCleanup, onMount, For, Show } from "solid-js"
 import { bar } from "./charts"
 import { configuredAgents, sessionTelemetry } from "./data"
 import { recommendNext } from "./decision-support"
@@ -116,19 +116,21 @@ export function AgentMatrix(props: Props & { width?: number; limit?: number }) {
               <box width="20%" flexDirection="row" justifyContent="flex-end"><text fg={props.api.theme.current.textMuted}>Status</text></box>
             </box>
           })()}
-          {rows().slice(0, props.limit ?? 20).map((agent, index) => {
-            const state = agent.running ? "WORK" : "OK"
-            const details = agent.fallbackCount > 0 ? `${agent.model}+${agent.fallbackCount}` : agent.model
-            const available = Math.max(0, Math.floor(width()))
-            const nameWidth = Math.floor(available * 0.4) - 1
-            return (
-              <box backgroundColor={index % 2 === 0 ? props.api.theme.current.backgroundPanel : props.api.theme.current.backgroundElement} width="100%" flexDirection="row" justifyContent="space-between">
-                <box width="40%" flexDirection="row" justifyContent="flex-start"><text fg={agent.running ? props.api.theme.current.warning : props.api.theme.current.text}>{() => truncate(agent.name, nameWidth)}</text></box>
-                <box width="40%" flexDirection="row" justifyContent="flex-start"><text fg={props.api.theme.current.textMuted}>{() => truncate(details, nameWidth)}</text></box>
-                <box width="20%" flexDirection="row" justifyContent="flex-end"><text fg={agent.running ? props.api.theme.current.warning : props.api.theme.current.success}>{() => state}</text></box>
-              </box>
-            )
-          })}
+          <For each={rows().slice(0, props.limit ?? 20)}>
+            {(agent, index) => {
+              const state = agent.running ? "WORK" : "OK"
+              const details = agent.fallbackCount > 0 ? `${agent.model}+${agent.fallbackCount}` : agent.model
+              const available = Math.max(0, Math.floor(width()))
+              const nameWidth = Math.floor(available * 0.4) - 1
+              return (
+                <box backgroundColor={index() % 2 === 0 ? props.api.theme.current.backgroundPanel : props.api.theme.current.backgroundElement} width="100%" flexDirection="row" justifyContent="space-between">
+                  <box width="40%" flexDirection="row" justifyContent="flex-start"><text fg={agent.running ? props.api.theme.current.warning : props.api.theme.current.text}>{() => truncate(agent.name, nameWidth)}</text></box>
+                  <box width="40%" flexDirection="row" justifyContent="flex-start"><text fg={props.api.theme.current.textMuted}>{() => truncate(details, nameWidth)}</text></box>
+                  <box width="20%" flexDirection="row" justifyContent="flex-end"><text fg={agent.running ? props.api.theme.current.warning : props.api.theme.current.success}>{() => state}</text></box>
+                </box>
+              )
+            }}
+          </For>
           {rows().length === 0 && <text fg={props.api.theme.current.textMuted}>No configured agents</text>}
         </>
       )}
@@ -170,26 +172,28 @@ export function ExecutionBlotter(props: Props & { width?: number; limit?: number
       <SectionTitle api={props.api} title="Executions" right={() => props.nativeSidebar ? `${counts().running}/${counts().total}` : `${counts().running} work, ${counts().error} err`} width={width()} native={props.nativeSidebar} collapsed={collapsed()} onToggle={() => setCollapsed(!collapsed())}/>
       {!collapsed() && (
         <>
-          {visibleRows().map((row, index) => {
-            const actualIndex = windowStart() + index
-            return (
-            <box
-              width="100%"
-              flexDirection="row"
-              justifyContent="space-between"
-              backgroundColor={safeSelected() === actualIndex ? props.api.theme.current.backgroundElement : (index % 2 === 0 ? props.api.theme.current.backgroundPanel : props.api.theme.current.backgroundElement)}
-              onMouseDown={() => {
-                props.onSelect?.(actualIndex)
-                if (row.sessionID) props.api.route.navigate("session", { sessionID: row.sessionID })
-              }}
-            >
-              <text fg={props.api.theme.current.text}>{() => truncate(row.title, width() - 15)}</text>
-              <box flexDirection="row">
-                <text fg={props.api.theme.current.textMuted}>{() => `${duration(row.startedAt, row.endedAt, now())}  `}</text>
-                <text fg={statusColor(props.api, row.status)}>{() => statusLabel(row.status)}</text>
+          <For each={visibleRows()}>
+            {(row, index) => {
+              const actualIndex = windowStart() + index()
+              return (
+              <box
+                width="100%"
+                flexDirection="row"
+                justifyContent="space-between"
+                backgroundColor={safeSelected() === actualIndex ? props.api.theme.current.backgroundElement : (index() % 2 === 0 ? props.api.theme.current.backgroundPanel : props.api.theme.current.backgroundElement)}
+                onMouseDown={() => {
+                  props.onSelect?.(actualIndex)
+                  if (row.sessionID) props.api.route.navigate("session", { sessionID: row.sessionID })
+                }}
+              >
+                <text fg={props.api.theme.current.text}>{() => truncate(row.title, width() - 15)}</text>
+                <box flexDirection="row">
+                  <text fg={props.api.theme.current.textMuted}>{() => `${duration(row.startedAt, row.endedAt, now())}  `}</text>
+                  <text fg={statusColor(props.api, row.status)}>{() => statusLabel(row.status)}</text>
+                </box>
               </box>
-            </box>
-          )})}
+            )}}
+          </For>
           {rows().length === 0 && <text fg={props.api.theme.current.textMuted}>No executions</text>}
         </>
       )}
@@ -251,15 +255,17 @@ export function QuotaPanel(props: { api: TuiPluginApi; width?: number }) {
     <SectionTitle api={props.api} title="Quota" right={() => snapshot() ? `${snapshot()!.providerCount}` : "..."} width={width()} native collapsed={collapsed()} onToggle={() => setCollapsed(!collapsed())} />
     {!collapsed() && (
       <>
-        {rows().slice(0, 12).map((row, index) => {
-          const displayName = row.name.toLowerCase().includes(row.provider.toLowerCase()) ? row.name : `${row.provider} ${row.name}`
-          return (
-            <box width="100%" flexDirection="row" justifyContent="space-between" backgroundColor={index % 2 === 0 ? props.api.theme.current.backgroundPanel : props.api.theme.current.backgroundElement}>
-              <text fg={props.api.theme.current.text}>{displayName}</text>
-              <text fg={props.api.theme.current.text}>{row.value}</text>
-            </box>
-          )
-        })}
+        <For each={rows().slice(0, 12)}>
+          {(row, index) => {
+            const displayName = row.name.toLowerCase().includes(row.provider.toLowerCase()) ? row.name : `${row.provider} ${row.name}`
+            return (
+              <box width="100%" flexDirection="row" justifyContent="space-between" backgroundColor={index() % 2 === 0 ? props.api.theme.current.backgroundPanel : props.api.theme.current.backgroundElement}>
+                <text fg={props.api.theme.current.text}>{displayName}</text>
+                <text fg={props.api.theme.current.text}>{row.value}</text>
+              </box>
+            )
+          }}
+        </For>
         {!snapshot() && <text fg={props.api.theme.current.textMuted}>Loading quota...</text>}
         {snapshot() && rows().length === 0 && <text fg={props.api.theme.current.textMuted}>No quota data yet</text>}
       </>
