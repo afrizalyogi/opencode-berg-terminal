@@ -43,6 +43,13 @@ const tui: TuiPlugin = async (api) => {
     const storedCharset = api.kv.get<ChartCharset>("berg.chart-charset", "ascii")
     const [chartMode, setChartMode] = createSignal<ChartMode>(chartModes.includes(storedMode) ? storedMode : "tokens")
     const [chartCharset, setChartCharset] = createSignal<ChartCharset>(storedCharset === "unicode" ? "unicode" : "ascii")
+    
+    // Global Clock for Reactivity
+    const [now, setNow] = createSignal(Date.now())
+    const clockTimer = setInterval(() => {
+      setNow(Date.now())
+      api.renderer.requestRender()
+    }, 1_000)
 
     const selectedRows = () => tracker.rows(sessionForNavigation(api))
     const moveSelection = (delta: number) => {
@@ -74,7 +81,7 @@ const tui: TuiPlugin = async (api) => {
 
     const offRoutes = api.route.register([{
       name: "berg-command-center",
-      render: ({ params }) => <BergCommandCenter api={api} tracker={tracker} sessionID={param(params, "sessionID")} selectedIndex={selectedIndex()} onSelect={setSelectedIndex} chartMode={chartMode()} chartCharset={chartCharset()} />,
+      render: ({ params }) => <BergCommandCenter api={api} tracker={tracker} now={now} sessionID={param(params, "sessionID")} selectedIndex={selectedIndex()} onSelect={setSelectedIndex} chartMode={chartMode()} chartCharset={chartCharset()} />,
     }])
 
     const offKeys = api.keymap.registerLayer({
@@ -185,7 +192,7 @@ const tui: TuiPlugin = async (api) => {
           return (
             <box flexDirection="column" width="100%" border={["right"]} borderColor={api.theme.current.borderSubtle}>
               <AgentMatrix api={api} tracker={tracker} sessionID={props.session_id} limit={20} nativeSidebar />
-              <ExecutionBlotter api={api} tracker={tracker} sessionID={props.session_id} limit={20} nativeSidebar />
+              <ExecutionBlotter api={api} tracker={tracker} now={now} sessionID={props.session_id} limit={20} nativeSidebar />
               <QuotaPanel api={api} />
             </box>
           )
@@ -223,6 +230,7 @@ const tui: TuiPlugin = async (api) => {
     })
 
     api.lifecycle.onDispose(() => {
+      clearInterval(clockTimer)
       disposeRoot()
       offRoutes()
       offKeys()

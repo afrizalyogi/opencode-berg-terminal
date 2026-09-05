@@ -15,6 +15,7 @@ import type { ChartCharset, ChartMode, ExecutionStatus } from "./types"
 type Props = {
   api: TuiPluginApi
   tracker: ExecutionTracker
+  now?: () => number
   sessionID?: string
   selectedIndex?: number
   onSelect?: (index: number) => void
@@ -150,7 +151,6 @@ export function ExecutionBlotter(props: Props & { width?: number; limit?: number
     Math.max(0, rows().length - limit()),
   )
   const visibleRows = () => rows().slice(windowStart(), windowStart() + limit())
-  const [now, setNow] = createSignal(Date.now())
   const [collapsed, setCollapsed] = createSignal(false)
   
   createEffect(() => {
@@ -161,8 +161,6 @@ export function ExecutionBlotter(props: Props & { width?: number; limit?: number
     if (props.sessionID) void props.tracker.reconcile(props.sessionID)
     const timer = setInterval(() => {
       if (props.sessionID) void props.tracker.reconcile(props.sessionID)
-      setNow(Date.now())
-      props.api.renderer.requestRender()
     }, 1_000)
     onCleanup(() => clearInterval(timer))
   })
@@ -188,7 +186,7 @@ export function ExecutionBlotter(props: Props & { width?: number; limit?: number
               >
                 <text fg={props.api.theme.current.text}>{() => truncate(row.title, width() - 15)}</text>
                 <box flexDirection="row">
-                  <text fg={props.api.theme.current.textMuted}>{() => `${duration(row.startedAt, row.endedAt, now())}  `}</text>
+                  <text fg={props.api.theme.current.textMuted}>{() => `${duration(row.startedAt, row.endedAt, props.now?.() ?? Date.now())}  `}</text>
                   <text fg={statusColor(props.api, row.status)}>{() => statusLabel(row.status)}</text>
                 </box>
               </box>
