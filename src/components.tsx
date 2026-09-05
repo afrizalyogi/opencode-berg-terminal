@@ -324,13 +324,18 @@ export function QuotaPanel(props: { api: TuiPluginApi; width?: number }) {
   })
   const rows = () => snapshot()?.rows ?? []
   const groups = () => {
-    const grouped = new Map<string, QuotaSnapshot["rows"]>()
+    const grouped = new Map<string, Map<string, QuotaSnapshot["rows"]>>()
     for (const row of rows()) {
       const service = row.service ?? row.provider
-      const key = row.account ? `${service} - ${row.account}` : service
-      grouped.set(key, [...(grouped.get(key) ?? []), row])
+      const account = row.account ?? "Default"
+      const serviceGroup = grouped.get(service) ?? new Map<string, QuotaSnapshot["rows"]>()
+      serviceGroup.set(account, [...(serviceGroup.get(account) ?? []), row])
+      grouped.set(service, serviceGroup)
     }
-    return [...grouped.entries()].map(([account, items]) => ({ account, items }))
+    return [...grouped.entries()].map(([service, accounts]) => ({
+      service,
+      accounts: [...accounts.entries()].map(([account, items]) => ({ account, items })),
+    }))
   }
   const itemLabel = (row: QuotaSnapshot["rows"][number]) => {
     const prefix = `${row.provider} `
@@ -370,16 +375,30 @@ export function QuotaPanel(props: { api: TuiPluginApi; width?: number }) {
         <For each={groups()}>
           {(group, groupIndex) => (
             <box width="100%" flexDirection="column" marginTop={groupIndex() === 0 ? 0 : 1} backgroundColor={groupIndex() % 2 === 0 ? props.api.theme.current.backgroundPanel : props.api.theme.current.backgroundElement} paddingLeft={1} paddingRight={1}>
-              <box width="100%" flexDirection="column" focusable onMouseDown={() => toggleAccount(group.account)} onKeyDown={(event) => toggleAccountKey(event, group.account)}>
-                <text fg={props.api.theme.current.accent} attributes={1} wrapMode="word">{() => `${collapsedAccounts().has(group.account) ? "+" : "v"} ${group.account}`}</text>
-                <Show when={cacheAge(group.items)}>{(age) => <text fg={props.api.theme.current.textMuted} wrapMode="word">{age()}</text>}</Show>
+              <box width="100%" flexDirection="column" focusable onMouseDown={() => toggleAccount(group.service)} onKeyDown={(event) => toggleAccountKey(event, group.service)}>
+                <text fg={props.api.theme.current.accent} attributes={1} wrapMode="word">{() => `${collapsedAccounts().has(group.service) ? "+" : "v"} ${group.service}`}</text>
+                <Show when={cacheAge(group.accounts.flatMap(a => a.items))}>{(age) => <text fg={props.api.theme.current.textMuted} wrapMode="word">{age()}</text>}</Show>
               </box>
-              <Show when={!collapsedAccounts().has(group.account)}>
-                <For each={group.items}>
-                  {(row) => (
+              <Show when={!collapsedAccounts().has(group.service)}>
+                <For each={group.accounts}>
+                  {(accountGroup) => (
                     <box width="100%" flexDirection="column" marginTop={1}>
-                      <text fg={props.api.theme.current.text} wrapMode="word">{itemLabel(row)}</text>
-                      <text fg={props.api.theme.current.textMuted}>{() => row.percent === undefined ? row.value : `${bar(row.percent, 100, Math.max(6, width() - 12), "unicode")}  ${row.percent} %`}</text>
+                      <Show when={accountGroup.account !== "Default"}>
+                        <text fg={props.api.theme.current.text} wrapMode="word" attributes={1}>{accountGroup.account}</text>
+                      </Show>
+                      <For each={accountGroup.items}>
+                        {(row) => (
+                          <box width="100%" flexDirection="column" marginTop={1}>
+                            <box width="100%" flexDirection="row" justifyContent="space-between">
+                              <text fg={props.api.theme.current.text} wrapMode="word">{itemLabel(row)}</text>
+                              <text fg={props.api.theme.current.textMuted}>{row.value}</text>
+                            </box>
+                            <Show when={row.percent !== undefined}>
+                              <text fg={props.api.theme.current.textMuted}>{() => bar(row.percent!, 100, Math.max(1, width() - 2), "unicode")}</text>
+                            </Show>
+                          </box>
+                        )}
+                      </For>
                     </box>
                   )}
                 </For>
