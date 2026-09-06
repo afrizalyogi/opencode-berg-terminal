@@ -374,21 +374,21 @@ export function QuotaPanel(props: { api: TuiPluginApi; width?: number }) {
         </box>
         <For each={groups()}>
           {(group, groupIndex) => (
-            <box width="100%" flexDirection="column" marginTop={groupIndex() === 0 ? 0 : 1} backgroundColor={groupIndex() % 2 === 0 ? props.api.theme.current.backgroundPanel : props.api.theme.current.backgroundElement} paddingLeft={1} paddingRight={1}>
+            <box width="100%" flexDirection="column" marginTop={groupIndex() === 0 ? 0 : 1} paddingLeft={1} paddingRight={1}>
               <box width="100%" flexDirection="column" focusable onMouseDown={() => toggleAccount(group.service)} onKeyDown={(event) => toggleAccountKey(event, group.service)}>
                 <text fg={props.api.theme.current.accent} attributes={1} wrapMode="word">{() => `${collapsedAccounts().has(group.service) ? "+" : "v"} ${group.service}`}</text>
                 <Show when={cacheAge(group.accounts.flatMap(a => a.items))}>{(age) => <text fg={props.api.theme.current.textMuted} wrapMode="word">{age()}</text>}</Show>
               </box>
               <Show when={!collapsedAccounts().has(group.service)}>
                 <For each={group.accounts}>
-                  {(accountGroup) => (
-                    <box width="100%" flexDirection="column" marginTop={1}>
+                  {(accountGroup, accountIndex) => (
+                    <box width="100%" flexDirection="column" marginTop={accountGroup.account === "Default" ? 0 : 1}>
                       <Show when={accountGroup.account !== "Default"}>
                         <text fg={props.api.theme.current.text} wrapMode="word" attributes={1}>{accountGroup.account}</text>
                       </Show>
                       <For each={accountGroup.items}>
-                        {(row) => (
-                          <box width="100%" flexDirection="column" marginTop={1}>
+                        {(row, rowIndex) => (
+                          <box width="100%" flexDirection="column" marginTop={rowIndex() === 0 && accountGroup.account !== "Default" ? 0 : 1}>
                             <box width="100%" flexDirection="row" justifyContent="space-between">
                               <text fg={props.api.theme.current.text} wrapMode="word">{itemLabel(row)}</text>
                               <text fg={props.api.theme.current.textMuted}>{row.value}</text>
