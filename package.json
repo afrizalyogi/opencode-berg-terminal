@@ -1,26 +1,32 @@
 {
   "name": "opencode-berg-terminal",
   "version": "0.2.0",
-  "description": "Source-first OpenCode TUI theme and responsive Berg command center",
-  "private": true,
+  "description": "Source-first OpenCode TUI plugin and theme with a responsive Berg command center",
+  "private": false,
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=22.6.0",
+    "node": ">=22.18.0",
     "npm": ">=10"
   },
   "oc-plugin": [
     "tui"
   ],
   "main": "./index.tsx",
+  "bin": {
+    "opencode-berg-terminal": "./scripts/install.mjs"
+  },
   "exports": {
     ".": "./index.tsx",
     "./theme": "./themes/berg-terminal.json",
     "./tui": "./tui.tsx"
   },
   "files": [
+    "index.tsx",
     "tui.tsx",
     "src",
+    "assets",
+    "benchmarks",
     "themes/berg-terminal.json",
     "examples/tui.json",
     "scripts",
@@ -29,6 +35,7 @@
     "LICENSE"
   ],
   "scripts": {
+    "benchmark": "node ./scripts/benchmark.mjs",
     "doctor": "node ./scripts/doctor.mjs",
     "install:check": "node ./scripts/install.mjs",
     "install:local": "node ./scripts/install.mjs",

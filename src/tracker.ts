@@ -17,6 +17,7 @@ export interface ExecutionTracker {
 export interface ExecutionTrackerReactivity {
   read(): void
   invalidate(): void
+  requestRender?(): void
 }
 
 function targetSessionID(part: { state: Record<string, unknown> }): string | undefined {
@@ -48,73 +49,125 @@ export function createExecutionTracker(api: TuiPluginApi, reactivity?: Execution
   const hydration = new Map<string, Promise<void>>()
   const hydrateRetryAt = new Map<string, number>()
   const reconciledAt = new Map<string, number>()
+  const scheduledReconcile = new Map<string, ReturnType<typeof setTimeout>>()
+  const sessionByPartID = new Map<string, string>()
+  const sessionByNextCallID = new Map<string, string>()
   const nextCalls = new Map<string, { parentID: string; title: string; agent?: string; startedAt: number }>()
 
-  const setEntries = (update: (current: Map<string, ExecutionEntry>) => Map<string, ExecutionEntry>) => {
-    entries = update(entries)
-  }
   const updateTick = () => reactivity?.invalidate()
+  const requestRender = () => {
+    if (reactivity?.requestRender) reactivity.requestRender()
+    else api.renderer.requestRender()
+  }
+
+  const sameEntry = (left: ExecutionEntry | undefined, right: ExecutionEntry): boolean => Boolean(left) &&
+    left!.id === right.id &&
+    left!.sessionID === right.sessionID &&
+    left!.parentID === right.parentID &&
+    left!.messageID === right.messageID &&
+    left!.partID === right.partID &&
+    left!.title === right.title &&
+    left!.summary === right.summary &&
+    left!.agent === right.agent &&
+    left!.startedAt === right.startedAt &&
+    left!.correlationAt === right.correlationAt &&
+    left!.endedAt === right.endedAt &&
+    left!.terminalOverride === right.terminalOverride
+
+  const publish = () => {
+    updateTick()
+    requestRender()
+  }
 
   const snapshot = (parentID?: string) => [...entries.values()]
     .filter((entry) => !parentID || entry.parentID === parentID)
     .map((entry) => ({ id: entry.id, parentID: entry.parentID, sessionID: entry.sessionID, status: statusFor(entry), agent: entry.agent }))
 
   const update = (id: string, patch: Partial<ExecutionEntry> & Pick<ExecutionEntry, "parentID" | "title">) => {
-    let changed = false
-    setEntries((current) => {
-      const next = new Map(current)
-      const previous = next.get(id)
-      const { startedAt, ...rest } = patch
-      const value: ExecutionEntry = {
-        id,
-        ...previous,
-        ...rest,
-        startedAt: previous?.startedAt ?? startedAt ?? Date.now(),
-      }
-      if (previous && Object.keys(value).every((key) => previous[key as keyof ExecutionEntry] === value[key as keyof ExecutionEntry])) return current
-      next.set(id, value)
-      changed = true
-      return next
-    })
-    if (!changed) return
-    updateTick()
-    api.renderer.requestRender()
-    diagnostic("tracker.update", { id, parentID: patch.parentID, rows: snapshot(patch.parentID) })
+    const previous = entries.get(id)
+    const { startedAt, ...rest } = patch
+    const value: ExecutionEntry = {
+      id,
+      ...previous,
+      ...rest,
+      startedAt: previous?.startedAt ?? startedAt ?? Date.now(),
+    }
+    if (sameEntry(previous, value)) return false
+    entries.set(id, value)
+    publish()
+    diagnostic("tracker.update", () => ({ id, parentID: patch.parentID, rows: snapshot(patch.parentID) }))
+    return true
   }
 
-  const registerSession = (session: { id: string; parentID?: string; title: string; agent?: string; time: { created: number } }) => {
-    if (!session.parentID) {
-      diagnostic("tracker.session.ignored", { id: session.id, reason: "missing-parent" })
-      return
-    }
-    setEntries((current) => {
-      const next = new Map(current)
-      const candidates = [...next.values()].filter((entry) =>
-        !entry.sessionID && entry.parentID === session.parentID &&
-        (!entry.agent || !session.agent || entry.agent.toLowerCase() === session.agent.toLowerCase()),
-      )
-      const pending = candidates.length === 1 ? candidates[0] : undefined
-      const previous = next.get(session.id)
-      next.set(session.id, {
+  type ChildSession = { id: string; parentID?: string; title: string; agent?: string; time: { created: number } }
+
+  const registerSessions = (sessions: ChildSession[]): boolean => {
+    let changed = false
+    const registered: Array<{ id: string; parentID: string; agent?: string }> = []
+    for (const session of sessions) {
+      if (!session.parentID) {
+        diagnostic("tracker.session.ignored", { id: session.id, reason: "missing-parent" })
+        continue
+      }
+      const previous = entries.get(session.id)
+      let pending: ExecutionEntry | undefined
+      let aliases: ExecutionEntry[] = []
+      if (!previous) {
+        const candidates: ExecutionEntry[] = []
+        for (const entry of entries.values()) {
+          if (entry.sessionID || entry.parentID !== session.parentID || (entry.agent && session.agent && entry.agent.toLowerCase() !== session.agent.toLowerCase())) continue
+          candidates.push(entry)
+        }
+        const sessionTitle = sanitizeLine(session.title).replace(/\s+\(@[^)]+\)$/, "").toLowerCase()
+        const exact = candidates.filter((entry) => entry.title.toLowerCase() === sessionTitle)
+        if (exact.length > 0) {
+          const correlationTime = (entry: ExecutionEntry) => entry.correlationAt ?? entry.startedAt
+          pending = exact.reduce((closest, entry) => Math.abs(correlationTime(entry) - session.time.created) < Math.abs(correlationTime(closest) - session.time.created) ? entry : closest)
+          aliases = [pending]
+          const kind = (entry: ExecutionEntry) => entry.id.startsWith("next:") ? "next" : entry.id.startsWith("pending:") ? "pending" : "other"
+          const pendingKind = kind(pending)
+          const sameKind = exact.filter((entry) => kind(entry) === pendingKind).sort((left, right) => correlationTime(left) - correlationTime(right))
+          const counterparts = exact.filter((entry) => kind(entry) !== pendingKind && kind(entry) !== "other").sort((left, right) => correlationTime(left) - correlationTime(right))
+          const counterpart = counterparts[sameKind.indexOf(pending)]
+          if (counterpart) aliases.push(counterpart)
+        } else if (candidates.length === 1) {
+          pending = candidates[0]
+          aliases = [pending]
+        }
+      }
+      const value: ExecutionEntry = {
         id: session.id,
         sessionID: session.id,
-        parentID: session.parentID!,
+        parentID: session.parentID,
         messageID: pending?.messageID ?? previous?.messageID,
         partID: pending?.partID ?? previous?.partID,
         title: pending?.title || previous?.title || sanitizeLine(session.title) || "Delegated session",
         summary: pending?.summary ?? previous?.summary,
         agent: pending?.agent ?? session.agent ?? previous?.agent,
         startedAt: pending?.startedAt ?? previous?.startedAt ?? session.time.created,
+        correlationAt: pending?.correlationAt ?? previous?.correlationAt ?? session.time.created,
         terminalOverride: previous?.terminalOverride,
         endedAt: previous?.endedAt,
-      })
-      if (pending) next.delete(pending.id)
-      return next
-    })
-    updateTick()
-    api.renderer.requestRender()
-    diagnostic("tracker.session.registered", { id: session.id, parentID: session.parentID, agent: session.agent, rows: snapshot(session.parentID) })
+      }
+      if (sameEntry(previous, value) && !pending) continue
+      entries.set(session.id, value)
+      if (pending) {
+        for (const alias of aliases) {
+          entries.delete(alias.id)
+          if (alias.partID) sessionByPartID.set(alias.partID, session.id)
+          if (alias.id.startsWith("next:")) sessionByNextCallID.set(alias.id.slice(5), session.id)
+        }
+      }
+      changed = true
+      registered.push({ id: session.id, parentID: session.parentID, agent: session.agent })
+    }
+    if (!changed) return false
+    publish()
+    diagnostic("tracker.sessions.registered", () => ({ sessions: registered }))
+    return true
   }
+
+  const registerSession = (session: ChildSession) => registerSessions([session])
 
   const ingestPart = (part: any, eventTime = Date.now()) => {
     if (part?.type === "subtask") {
@@ -131,35 +184,62 @@ export function createExecutionTracker(api: TuiPluginApi, reactivity?: Execution
     }
     if (part?.type !== "tool" || (part.tool !== "task" && part.tool !== "delegate")) return
     const input = (part.state?.input ?? {}) as PendingInput
-    const sessionID = targetSessionID(part as { state: Record<string, unknown> })
-    const id = sessionID ?? `pending:${part.id}`
+    const callID = typeof part.callID === "string" ? part.callID : undefined
+    const sessionID = targetSessionID(part as { state: Record<string, unknown> }) ?? sessionByPartID.get(part.id) ?? (callID ? sessionByNextCallID.get(callID) : undefined)
+    if (sessionID) {
+      sessionByPartID.set(part.id, sessionID)
+      if (callID) sessionByNextCallID.set(callID, sessionID)
+    }
+    const title = sanitizeLine(input.description ?? part.state?.title ?? input.subagent_type) || "DELEGATED TASK"
+    const agent = typeof input.subagent_type === "string" ? input.subagent_type : undefined
+    const pendingID = callID ? `next:${callID}` : `pending:${part.id}`
+    const pending = sessionID ? entries.get(pendingID) : undefined
+    let removedAlias = Boolean(pending)
+    if (pending) entries.delete(pendingID)
+    if (sessionID && !callID) {
+      const linkedNext = [...entries.values()].filter((entry) => entry.id.startsWith("next:") && !entry.sessionID && entry.parentID === part.sessionID && entry.title === title && (!entry.agent || !agent || entry.agent.toLowerCase() === agent.toLowerCase()))
+      if (linkedNext.length === 1) {
+        const alias = linkedNext[0]
+        entries.delete(alias.id)
+        sessionByNextCallID.set(alias.id.slice(5), sessionID)
+        removedAlias = true
+      }
+    }
+    const id = sessionID ?? pendingID
     const status = part.state?.status
     const previous = entries.get(id)
     const terminal = status === "error" || status === "completed"
-    update(id, {
+    const changed = update(id, {
       sessionID,
       parentID: part.sessionID,
       messageID: part.messageID,
       partID: part.id,
-      title: sanitizeLine(input.description ?? part.state?.title ?? input.subagent_type) || "DELEGATED TASK",
+      title,
       summary: sanitizeLine(input.prompt),
-      agent: typeof input.subagent_type === "string" ? input.subagent_type : undefined,
+      agent,
       startedAt: typeof part.state?.time === "object" && part.state.time && typeof part.state.time.start === "number"
+        ? part.state.time.start
+        : pending?.startedAt ?? eventTime,
+      correlationAt: typeof part.state?.time === "object" && part.state.time && typeof part.state.time.start === "number"
         ? part.state.time.start
         : eventTime,
       terminalOverride: status === "error" ? "error" : status === "completed" ? "done" : undefined,
-      endedAt: terminal ? previous?.endedAt ?? terminalTime(part, eventTime) : undefined,
+      endedAt: terminal ? previous?.endedAt ?? pending?.endedAt ?? terminalTime(part, eventTime) : undefined,
     })
+    if (removedAlias && !changed) publish()
   }
 
   disposers.push(api.event.on("session.created", (event) => {
     const info = event.properties.info
     diagnostic("event.session.created", { id: info.id, parentID: info.parentID, agent: info.agent })
     registerSession(info)
-    // Immediately reconcile parent session to fetch any siblings we might have missed
-    if (info.parentID) {
+    if (info.parentID && !scheduledReconcile.has(info.parentID)) {
       const parentID = info.parentID
-      setTimeout(() => { if (!api.lifecycle.signal.aborted) void reconcile(parentID) }, 200)
+      const timer = setTimeout(() => {
+        scheduledReconcile.delete(parentID)
+        if (!api.lifecycle.signal.aborted) void reconcile(parentID)
+      }, 250)
+      scheduledReconcile.set(parentID, timer)
     }
   }))
   disposers.push(api.event.on("session.updated", (event) => {
@@ -190,12 +270,11 @@ export function createExecutionTracker(api: TuiPluginApi, reactivity?: Execution
     if (previous) update(previous.id, { ...previous, terminalOverride: "error", endedAt: previous.endedAt ?? Date.now() })
   }))
   disposers.push(api.event.on("session.deleted", (event) => {
-    setEntries((current) => {
-      const next = new Map(current)
-      next.delete(event.properties.info.id)
-      return next
-    })
-    updateTick()
+    if (!entries.has(event.properties.info.id)) return
+    entries.delete(event.properties.info.id)
+    for (const [partID, sessionID] of sessionByPartID) if (sessionID === event.properties.info.id) sessionByPartID.delete(partID)
+    for (const [callID, sessionID] of sessionByNextCallID) if (sessionID === event.properties.info.id) sessionByNextCallID.delete(callID)
+    publish()
   }))
   disposers.push(api.event.on("message.part.updated", (event) => {
     const part = event.properties.part as any
@@ -214,51 +293,61 @@ export function createExecutionTracker(api: TuiPluginApi, reactivity?: Execution
     const agent = typeof input.subagent_type === "string" ? input.subagent_type : undefined
     const startedAt = typeof props.timestamp === "number" ? props.timestamp : Date.now()
     nextCalls.set(props.callID, { parentID: props.sessionID, title, agent, startedAt })
-    update(`next:${props.callID}`, { parentID: props.sessionID, title, agent, startedAt })
+    update(`next:${props.callID}`, { parentID: props.sessionID, title, agent, startedAt, correlationAt: startedAt })
   }))
   disposers.push(onEvent("session.next.tool.success", (event) => {
-    const call = nextCalls.get(event.properties?.callID)
+    const callID = event.properties?.callID
+    const call = nextCalls.get(callID)
     if (!call) return
-    update(`next:${event.properties.callID}`, { ...call, terminalOverride: "done", endedAt: event.properties.timestamp ?? Date.now() })
-    nextCalls.delete(event.properties.callID)
+    const sessionID = sessionByNextCallID.get(callID)
+    const id = sessionID ?? `next:${callID}`
+    update(id, { ...call, sessionID, title: entries.get(id)?.title ?? call.title, terminalOverride: "done", endedAt: event.properties.timestamp ?? Date.now() })
+    nextCalls.delete(callID)
+    sessionByNextCallID.delete(callID)
     void reconcile(call.parentID)
   }))
   disposers.push(onEvent("session.next.tool.failed", (event) => {
-    const call = nextCalls.get(event.properties?.callID)
+    const callID = event.properties?.callID
+    const call = nextCalls.get(callID)
     if (!call) return
-    update(`next:${event.properties.callID}`, { ...call, terminalOverride: "error", endedAt: event.properties.timestamp ?? Date.now() })
-    nextCalls.delete(event.properties.callID)
+    const sessionID = sessionByNextCallID.get(callID)
+    const id = sessionID ?? `next:${callID}`
+    update(id, { ...call, sessionID, title: entries.get(id)?.title ?? call.title, terminalOverride: "error", endedAt: event.properties.timestamp ?? Date.now() })
+    nextCalls.delete(callID)
+    sessionByNextCallID.delete(callID)
   }))
   disposers.push(api.event.on("message.updated", (event) => {
-    updateTick()
     const message = event.properties.info
     if (message.role !== "assistant" || !message.time.completed) return
-    setEntries((current) => {
-      let changed = false
-      const next = new Map(current)
-      for (const [id, entry] of next) {
-        if (entry.sessionID || entry.messageID !== message.id || entry.terminalOverride) continue
-        next.set(id, { ...entry, terminalOverride: message.error ? "error" : "done", endedAt: message.time.completed })
-        changed = true
-      }
-      return changed ? next : current
-    })
+    let changed = false
+    for (const [id, entry] of entries) {
+      if (entry.sessionID || entry.messageID !== message.id || entry.terminalOverride) continue
+      entries.set(id, { ...entry, terminalOverride: message.error ? "error" : "done", endedAt: message.time.completed })
+      changed = true
+    }
+    if (!changed) return
+    publish()
   }))
   disposers.push(api.event.on("message.part.removed", (event) => {
-    setEntries((current) => {
-      const next = new Map(current)
-      for (const [id, entry] of next) if (!entry.sessionID && entry.partID === event.properties.partID) next.delete(id)
-      return next.size === current.size ? current : next
-    })
-    updateTick()
+    sessionByPartID.delete(event.properties.partID)
+    let changed = false
+    for (const [id, entry] of entries) {
+      if (entry.sessionID || entry.partID !== event.properties.partID) continue
+      entries.delete(id)
+      changed = true
+    }
+    if (!changed) return
+    publish()
   }))
   disposers.push(api.event.on("message.removed", (event) => {
-    setEntries((current) => {
-      const next = new Map(current)
-      for (const [id, entry] of next) if (!entry.sessionID && entry.messageID === event.properties.messageID) next.delete(id)
-      return next.size === current.size ? current : next
-    })
-    updateTick()
+    let changed = false
+    for (const [id, entry] of entries) {
+      if (entry.sessionID || entry.messageID !== event.properties.messageID) continue
+      entries.delete(id)
+      changed = true
+    }
+    if (!changed) return
+    publish()
   }))
 
   function statusFor(entry: ExecutionEntry): ExecutionStatus {
@@ -291,7 +380,7 @@ export function createExecutionTracker(api: TuiPluginApi, reactivity?: Execution
       try {
         const response = await api.client.session.children({ sessionID: parentID, directory: api.state.path.directory })
         if (api.lifecycle.signal.aborted) return
-        for (const session of response.data ?? []) registerSession(session)
+        registerSessions(response.data ?? [])
         hydrated.add(parentID)
         hydrateRetryAt.delete(parentID)
       } catch {
@@ -307,24 +396,21 @@ export function createExecutionTracker(api: TuiPluginApi, reactivity?: Execution
 
   async function reconcile(parentID: string): Promise<void> {
     if (!parentID || api.lifecycle.signal.aborted) return
-    // Scan local state for any tool parts we might have missed
+    const now = Date.now()
+    if ((reconciledAt.get(parentID) ?? 0) + 15_000 > now) return
+    if (hydration.has(parentID)) return
+    reconciledAt.set(parentID, now)
+    // Event handlers are the realtime path; this scan is a low-frequency safety net.
     for (const message of api.state.session.messages(parentID)) {
       for (const part of api.state.part(message.id)) ingestPart(part)
     }
-    // Throttle server calls to max once per 2 seconds, but do not block on in-flight
-    const now = Date.now()
-    if ((reconciledAt.get(parentID) ?? 0) + 2_000 > now) return
-    if (hydration.has(parentID)) return
-    reconciledAt.set(parentID, now)
+    // Keep server reconciliation infrequent and coalesce in-flight requests.
     const request = (async () => {
       try {
         const response = await api.client.session.children({ sessionID: parentID, directory: api.state.path.directory })
         if (api.lifecycle.signal.aborted) return
-        diagnostic("tracker.reconcile.response", { parentID, childIDs: (response.data ?? []).map((session) => session.id) })
-        for (const session of response.data ?? []) registerSession(session)
-        // Always force a tick+render after fetching children so the UI reflects current state
-        updateTick()
-        api.renderer.requestRender()
+        diagnostic("tracker.reconcile.response", () => ({ parentID, childIDs: (response.data ?? []).map((session) => session.id) }))
+        registerSessions(response.data ?? [])
       } catch (error) {
         diagnostic("tracker.reconcile.error", { parentID, error: error instanceof Error ? error.message : String(error) })
         // local state reconciliation via ingestPart above is still available
@@ -356,7 +442,11 @@ export function createExecutionTracker(api: TuiPluginApi, reactivity?: Execution
     },
     hydrate,
     reconcile,
-    dispose() { for (const dispose of disposers) dispose() },
+    dispose() {
+      for (const timer of scheduledReconcile.values()) clearTimeout(timer)
+      scheduledReconcile.clear()
+      for (const dispose of disposers) dispose()
+    },
     hasRunning(parentID) { return [...entries.values()].some((entry) => (!parentID || entry.parentID === parentID) && statusFor(entry) === "running") },
   }
 }

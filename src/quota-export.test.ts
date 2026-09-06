@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { describe, test } from "node:test"
 import { resolve } from "node:path"
-import { maskEmail, opencodeConfigDir, parseAntigravityAccounts, parseOpenAIUsage } from "./quota-export.ts"
+import { maskEmail, opencodeConfigDir, opencodeDataDir, parseAntigravityAccounts, parseOpenAIUsage } from "./quota-export.ts"
 
 describe("standalone quota parser", () => {
   test("distinguishes OpenAI 5 hour and weekly windows", () => {
@@ -44,7 +44,7 @@ describe("standalone quota parser", () => {
   })
 
   test("masks email correctly for various lengths", () => {
-    assert.equal(maskEmail("richiewillis729@gmail.com"), "ric***729@gmail.com")
+    assert.equal(maskEmail("richiewillis729@example.com"), "ric***729@example.com")
     assert.equal(maskEmail("admin@example.com"), "adm***in@example.com")
     assert.equal(maskEmail("a@example.com"), "a***@example.com")
     assert.equal(maskEmail("ab@example.com"), "ab***@example.com")
@@ -57,5 +57,11 @@ describe("standalone quota parser", () => {
     assert.equal(opencodeConfigDir({ OPENCODE_CONFIG_DIR: "C:/custom" } as NodeJS.ProcessEnv, "C:/Users/example"), resolve("C:/custom"))
     assert.equal(opencodeConfigDir({ XDG_CONFIG_HOME: "/tmp/config" } as NodeJS.ProcessEnv, "/home/example"), resolve("/tmp/config", "opencode"))
     assert.equal(opencodeConfigDir({} as NodeJS.ProcessEnv, "/home/example"), resolve("/home/example", ".config", "opencode"))
+  })
+
+  test("resolves the OpenCode data directory across platforms", () => {
+    assert.equal(opencodeDataDir({ OPENCODE_DATA_DIR: "C:/data" } as NodeJS.ProcessEnv, "C:/Users/example"), resolve("C:/data"))
+    assert.equal(opencodeDataDir({ XDG_DATA_HOME: "/tmp/data" } as NodeJS.ProcessEnv, "/home/example"), resolve("/tmp/data", "opencode"))
+    assert.equal(opencodeDataDir({} as NodeJS.ProcessEnv, "/home/example"), resolve("/home/example", ".local", "share", "opencode"))
   })
 })

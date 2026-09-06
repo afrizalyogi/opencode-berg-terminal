@@ -19,6 +19,11 @@ export type QuotaSnapshot = {
   providerCount: number
 }
 
+export type QuotaFetchOptions = {
+  force?: boolean
+  live?: boolean
+}
+
 type PlainObject = Record<string, any>
 
 function object(value: unknown): PlainObject | undefined {
@@ -166,6 +171,12 @@ export function opencodeConfigDir(env: NodeJS.ProcessEnv = process.env, home = h
   return resolve(home, ".config", "opencode")
 }
 
+export function opencodeDataDir(env: NodeJS.ProcessEnv = process.env, home = homedir()): string {
+  if (env.OPENCODE_DATA_DIR) return resolve(env.OPENCODE_DATA_DIR)
+  if (env.XDG_DATA_HOME) return resolve(env.XDG_DATA_HOME, "opencode")
+  return resolve(home, ".local", "share", "opencode")
+}
+
 export function parseAntigravityAccounts(value: unknown): QuotaRow[] {
   const data = object(value)
   if (!data) return []
@@ -211,25 +222,36 @@ async function readAntigravity(): Promise<QuotaRow[]> {
   }
 }
 
-let cached: QuotaSnapshot | undefined
-let cachedAt = 0
-let inflight: Promise<QuotaSnapshot> | undefined
+const cache = new Map<"local" | "live", { snapshot: QuotaSnapshot; at: number }>()
+const inflight = new Map<"local" | "live", Promise<QuotaSnapshot>>()
 
-export async function fetchQuotaSnapshot(force = false): Promise<QuotaSnapshot> {
-  if (!force && cached && Date.now() - cachedAt < 60_000) return cached
-  if (inflight) return inflight
-  inflight = (async () => {
+export async function fetchQuotaSnapshot(options: QuotaFetchOptions = {}): Promise<QuotaSnapshot> {
+  const key = options.live ? "live" : "local"
+  const cached = cache.get(key)
+  if (!options.force && cached && Date.now() - cached.at < 60_000) return cached.snapshot
+  const active = inflight.get(key)
+  if (active) return active
+  const request = (async () => {
+    const googlePromise = readAntigravity()
+    if (!options.live) {
+      const rows = await googlePromise
+      return { exportedAt: Math.floor(Date.now() / 1000), rows, providerCount: Number(rows.length > 0) }
+    }
     let auth: PlainObject = {}
     try {
-      auth = JSON.parse(await readFile(join(homedir(), ".local", "share", "opencode", "auth.json"), "utf8"))
+      auth = JSON.parse(await readFile(join(opencodeDataDir(), "auth.json"), "utf8"))
     } catch {
       // Missing auth file is fine
     }
-    const [openai, openrouter, google] = await Promise.all([fetchOpenAI(auth), fetchOpenRouter(auth), readAntigravity()])
+    const [openai, openrouter, google] = await Promise.all([fetchOpenAI(auth), fetchOpenRouter(auth), googlePromise])
     const rows = [...openai, ...openrouter, ...google]
-    cached = { exportedAt: Math.floor(Date.now() / 1000), rows, providerCount: Number(openai.length > 0) + Number(openrouter.length > 0) + Number(google.length > 0) }
-    cachedAt = Date.now()
-    return cached
-  })().finally(() => { inflight = undefined })
-  return inflight
+    return { exportedAt: Math.floor(Date.now() / 1000), rows, providerCount: Number(openai.length > 0) + Number(openrouter.length > 0) + Number(google.length > 0) }
+  })()
+    .then((snapshot) => {
+      cache.set(key, { snapshot, at: Date.now() })
+      return snapshot
+    })
+    .finally(() => { inflight.delete(key) })
+  inflight.set(key, request)
+  return request
 }

@@ -10,8 +10,8 @@ import { recommendNext } from "./decision-support"
 import { columns, duration, layoutFor, metric, money, padLeft, padRight, statusLabel, threeColumnWidths, truncate, widePaneWidths } from "./format"
 import { fetchQuotaSnapshot, type QuotaSnapshot } from "./quota-export"
 import type { ExecutionTracker } from "./tracker"
-import type { ChartCharset, ChartMode, ExecutionStatus, ExecutionRow, AgentRow } from "./types"
-import { diagnostic } from "./diagnostic"
+import type { ChartCharset, ChartMode, ExecutionStatus, ExecutionRow, AgentRow, SessionTelemetry } from "./types"
+import { diagnostic, diagnosticsEnabled } from "./diagnostic"
 
 type Props = {
   api: TuiPluginApi
@@ -23,41 +23,40 @@ type Props = {
   chartMode?: ChartMode
   chartCharset?: ChartCharset
   nativeSidebar?: boolean
+  messageRevision?: number
+  telemetry?: SessionTelemetry
 }
 
-function AgentRowRenderer(props: { api: TuiPluginApi; getAgent: () => AgentRow | undefined; index: number; width: number }) {
-  const agent = () => props.getAgent()
-  const state = () => agent()?.running ? "WORK" : "OK"
-  const details = () => (agent()?.fallbackCount ?? 0) > 0 ? `${agent()?.model}+${agent()?.fallbackCount}` : agent()?.model
+function AgentRowRenderer(props: { api: TuiPluginApi; agent: AgentRow; index: number; width: number }) {
+  const state = () => props.agent.running ? "WORK" : "OK"
+  const details = () => props.agent.fallbackCount > 0 ? `${props.agent.model}+${props.agent.fallbackCount}` : props.agent.model
   const available = () => Math.max(0, Math.floor(props.width))
   const nameWidth = () => Math.floor(available() * 0.4) - 1
 
   return (
-    <Show when={agent()}>
-      <box backgroundColor={props.index % 2 === 0 ? props.api.theme.current.backgroundPanel : props.api.theme.current.backgroundElement} width="100%" flexDirection="row" justifyContent="space-between">
-        <box width="40%" flexDirection="row" justifyContent="flex-start">
-          <text fg={agent()!.running ? props.api.theme.current.warning : props.api.theme.current.text}>
-            {() => truncate(agent()!.name, nameWidth())}
-          </text>
-        </box>
-        <box width="40%" flexDirection="row" justifyContent="flex-start">
-          <text fg={props.api.theme.current.textMuted}>
-            {() => truncate(details(), nameWidth())}
-          </text>
-        </box>
-        <box width="20%" flexDirection="row" justifyContent="flex-end">
-          <text fg={agent()!.running ? props.api.theme.current.warning : props.api.theme.current.success}>
-            {state}
-          </text>
-        </box>
+    <box backgroundColor={props.index % 2 === 0 ? props.api.theme.current.backgroundPanel : props.api.theme.current.backgroundElement} width="100%" flexDirection="row" justifyContent="space-between">
+      <box width="40%" flexDirection="row" justifyContent="flex-start">
+        <text fg={props.agent.running ? props.api.theme.current.warning : props.api.theme.current.text}>
+          {() => truncate(props.agent.name, nameWidth())}
+        </text>
       </box>
-    </Show>
+      <box width="40%" flexDirection="row" justifyContent="flex-start">
+        <text fg={props.api.theme.current.textMuted}>
+          {() => truncate(details(), nameWidth())}
+        </text>
+      </box>
+      <box width="20%" flexDirection="row" justifyContent="flex-end">
+        <text fg={props.agent.running ? props.api.theme.current.warning : props.api.theme.current.success}>
+          {state}
+        </text>
+      </box>
+    </box>
   )
 }
 
 function ExecutionRowRenderer(props: {
   api: TuiPluginApi
-  getRow: () => ExecutionRow | undefined
+  row: ExecutionRow
   index: number
   actualIndex: number
   width: number
@@ -65,26 +64,23 @@ function ExecutionRowRenderer(props: {
   now: number
   onSelect?: (index: number) => void
 }) {
-  const row = () => props.getRow()
   return (
-    <Show when={row()}>
-      <box
-        width="100%"
-        flexDirection="row"
-        justifyContent="space-between"
-        backgroundColor={props.safeSelected === props.actualIndex ? props.api.theme.current.backgroundElement : (props.index % 2 === 0 ? props.api.theme.current.backgroundPanel : props.api.theme.current.backgroundElement)}
-        onMouseDown={() => {
-          props.onSelect?.(props.actualIndex)
-          if (row()!.sessionID) props.api.route.navigate("session", { sessionID: row()!.sessionID })
-        }}
-      >
-        <text fg={props.api.theme.current.text}>{() => truncate(row()!.title, props.width - 15)}</text>
-        <box flexDirection="row">
-          <text fg={props.api.theme.current.textMuted}>{() => `${duration(row()!.startedAt, row()!.endedAt, props.now)}  `}</text>
-          <text fg={statusColor(props.api, row()!.status)}>{() => statusLabel(row()!.status)}</text>
-        </box>
+    <box
+      width="100%"
+      flexDirection="row"
+      justifyContent="space-between"
+      backgroundColor={props.safeSelected === props.actualIndex ? props.api.theme.current.backgroundElement : (props.index % 2 === 0 ? props.api.theme.current.backgroundPanel : props.api.theme.current.backgroundElement)}
+      onMouseDown={() => {
+        props.onSelect?.(props.actualIndex)
+        if (props.row.sessionID) props.api.route.navigate("session", { sessionID: props.row.sessionID })
+      }}
+    >
+      <text fg={props.api.theme.current.text}>{() => truncate(props.row.title, props.width - 15)}</text>
+      <box flexDirection="row">
+        <text fg={props.api.theme.current.textMuted}>{() => `${duration(props.row.startedAt, props.row.endedAt, props.now)}  `}</text>
+        <text fg={statusColor(props.api, props.row.status)}>{() => statusLabel(props.row.status)}</text>
       </box>
-    </Show>
+    </box>
   )
 }
 
@@ -163,15 +159,17 @@ export function CommandEntry(props: { api: TuiPluginApi; prompt: TuiPromptProps 
 }
 
 export function AgentMatrix(props: Props & { width?: number; limit?: number }) {
-  const rows = () => {
-    props.tracker.counts(props.sessionID) // establish reactive dependency on tracker
+  const rows = createMemo(() => {
     return configuredAgents(props.api, props.sessionID, props.tracker)
-  }
+  })
+  const visibleRows = createMemo(() => rows().slice(0, props.limit ?? 20))
+  const visibleNames = createMemo(() => visibleRows().map((row) => row.name))
+  const rowsByName = createMemo(() => new Map(rows().map((row) => [row.name, row])))
   const width = () => props.width ?? 31
   const [collapsed, setCollapsed] = createSignal(false)
-  createEffect(() => {
+  if (diagnosticsEnabled) createEffect(() => {
     const executions = props.tracker.rows(props.sessionID)
-    diagnostic("ui.agents.subscription", { parentID: props.sessionID, rows: executions.map((row) => ({ id: row.id, status: row.status, agent: row.agent })) })
+    diagnostic("ui.agents.subscription", () => ({ parentID: props.sessionID, rows: executions.map((row) => ({ id: row.id, status: row.status, agent: row.agent })) }))
   })
   return (
     <box flexDirection="column" width="100%">
@@ -185,8 +183,8 @@ export function AgentMatrix(props: Props & { width?: number; limit?: number }) {
               <box width="20%" flexDirection="row" justifyContent="flex-end"><text fg={props.api.theme.current.textMuted}>Status</text></box>
             </box>
           })()}
-          <For each={rows().slice(0, props.limit ?? 20).map(r => r.name)}>
-            {(name, index) => <AgentRowRenderer api={props.api} getAgent={() => rows().find(r => r.name === name)} index={index()} width={width()} />}
+          <For each={visibleNames()}>
+            {(name, index) => <AgentRowRenderer api={props.api} agent={rowsByName().get(name)!} index={index()} width={width()} />}
           </For>
           {rows().length === 0 && <text fg={props.api.theme.current.textMuted}>No configured agents</text>}
         </>
@@ -198,31 +196,29 @@ export function AgentMatrix(props: Props & { width?: number; limit?: number }) {
 
 export function ExecutionBlotter(props: Props & { width?: number; limit?: number }) {
   const width = () => props.width ?? 31
-  const rows = () => props.tracker.rows(props.sessionID)
-  const counts = () => props.tracker.counts(props.sessionID)
+  const rows = createMemo(() => props.tracker.rows(props.sessionID))
+  const counts = createMemo(() => props.tracker.counts(props.sessionID))
   const limit = () => props.limit ?? 7
-  const safeSelected = () => Math.min(Math.max(0, props.selectedIndex ?? 0), Math.max(0, rows().length - 1))
-  const windowStart = () => Math.min(
+  const safeSelected = createMemo(() => Math.min(Math.max(0, props.selectedIndex ?? 0), Math.max(0, rows().length - 1)))
+  const windowStart = createMemo(() => Math.min(
     Math.max(0, safeSelected() - limit() + 1),
     Math.max(0, rows().length - limit()),
-  )
-  const visibleRows = () => rows().slice(windowStart(), windowStart() + limit())
+  ))
+  const visibleRows = createMemo(() => rows().slice(windowStart(), windowStart() + limit()))
+  const visibleIDs = createMemo(() => visibleRows().map((row) => row.id))
+  const visibleByID = createMemo(() => new Map(visibleRows().map((row) => [row.id, row])))
   const [collapsed, setCollapsed] = createSignal(false)
 
-  createEffect(() => {
+  if (diagnosticsEnabled) createEffect(() => {
     const executions = props.tracker.rows(props.sessionID)
-    diagnostic("ui.executions.subscription", { parentID: props.sessionID, rows: executions.map((row) => ({ id: row.id, status: row.status, agent: row.agent })) })
-  })
-  
-  createEffect(() => {
-    if (props.sessionID) void props.tracker.hydrate(props.sessionID)
+    diagnostic("ui.executions.subscription", () => ({ parentID: props.sessionID, rows: executions.map((row) => ({ id: row.id, status: row.status, agent: row.agent })) }))
   })
 
   onMount(() => {
     if (props.sessionID) void props.tracker.reconcile(props.sessionID)
     const timer = setInterval(() => {
       if (props.sessionID) void props.tracker.reconcile(props.sessionID)
-    }, 1_000)
+    }, 15_000)
     onCleanup(() => clearInterval(timer))
   })
   
@@ -231,11 +227,11 @@ export function ExecutionBlotter(props: Props & { width?: number; limit?: number
       <SectionTitle api={props.api} title="Executions" right={() => props.nativeSidebar ? `${counts().running}/${counts().total}` : `${counts().running} work, ${counts().error} err`} width={width()} native={props.nativeSidebar} collapsed={collapsed()} onToggle={() => setCollapsed(!collapsed())}/>
       {!collapsed() && (
         <>
-          <For each={visibleRows().map(r => r.id)}>
+          <For each={visibleIDs()}>
             {(id, index) => (
               <ExecutionRowRenderer
                 api={props.api}
-                getRow={() => visibleRows().find(r => r.id === id)}
+                row={visibleByID().get(id)!}
                 index={index()}
                 actualIndex={windowStart() + index()}
                 width={width()}
@@ -255,12 +251,7 @@ export function ExecutionBlotter(props: Props & { width?: number; limit?: number
 
 export function Telemetry(props: Props & { width?: number; compact?: boolean }) {
   const width = () => props.width ?? 31
-  const [tick, setTick] = createSignal(0)
-  onMount(() => {
-    const off = props.api.event.on("message.updated", () => setTick(t => t + 1))
-    onCleanup(() => off())
-  })
-  const data = () => props.sessionID ? sessionTelemetry(props.api, props.sessionID, tick()) : undefined
+  const data = createMemo(() => props.telemetry ?? (props.sessionID ? sessionTelemetry(props.api, props.sessionID, props.messageRevision) : undefined))
   return (
     <box flexDirection="column" width="100%">
       <SectionTitle api={props.api} title="Usage" width={width()} native={props.nativeSidebar} />
@@ -294,7 +285,7 @@ export function QuotaPanel(props: { api: TuiPluginApi; width?: number }) {
     if (refreshing()) return
     setRefreshing(true)
     try {
-      const next = await fetchQuotaSnapshot(true)
+      const next = await fetchQuotaSnapshot({ force: true, live: true })
       setSnapshot(next)
       if (notify) {
         const stale = next.rows.some((row) => row.provider === "Google" || row.provider === "Anthropic"
@@ -306,24 +297,10 @@ export function QuotaPanel(props: { api: TuiPluginApi; width?: number }) {
       }
     } finally {
       setRefreshing(false)
-      props.api.renderer.requestRender()
     }
   }
-  onMount(() => {
-    let disposed = false
-    const reload = async () => {
-      const next = await fetchQuotaSnapshot(true)
-      if (!disposed) setSnapshot(next)
-    }
-    void reload()
-    const timer = setInterval(() => void reload(), 60_000)
-    onCleanup(() => {
-      disposed = true
-      clearInterval(timer)
-    })
-  })
-  const rows = () => snapshot()?.rows ?? []
-  const groups = () => {
+  const rows = createMemo(() => snapshot()?.rows ?? [])
+  const groups = createMemo(() => {
     const grouped = new Map<string, Map<string, QuotaSnapshot["rows"]>>()
     for (const row of rows()) {
       const service = row.service ?? row.provider
@@ -336,7 +313,7 @@ export function QuotaPanel(props: { api: TuiPluginApi; width?: number }) {
       service,
       accounts: [...accounts.entries()].map(([account, items]) => ({ account, items })),
     }))
-  }
+  })
   const itemLabel = (row: QuotaSnapshot["rows"][number]) => {
     const prefix = `${row.provider} `
     const name = row.name.startsWith(prefix) ? row.name.slice(prefix.length) : row.name
@@ -370,7 +347,7 @@ export function QuotaPanel(props: { api: TuiPluginApi; width?: number }) {
           event.stopPropagation()
           void refresh(true)
         }}>
-          <text fg={refreshing() ? props.api.theme.current.textMuted : props.api.theme.current.accent}>{() => refreshing() ? "Refreshing..." : "[ Refresh quota ]"}</text>
+          <text fg={refreshing() ? props.api.theme.current.textMuted : props.api.theme.current.accent}>{() => refreshing() ? "Loading..." : "[ Load live quota ]"}</text>
         </box>
         <For each={groups()}>
           {(group, groupIndex) => (
@@ -406,7 +383,7 @@ export function QuotaPanel(props: { api: TuiPluginApi; width?: number }) {
             </box>
           )}
         </For>
-        {!snapshot() && <text fg={props.api.theme.current.textMuted}>Loading quota...</text>}
+        {!snapshot() && <text fg={props.api.theme.current.textMuted}>Off until requested; stored credentials are never copied.</text>}
         {snapshot() && rows().length === 0 && <text fg={props.api.theme.current.textMuted}>No quota data yet</text>}
       </>
     )}
@@ -415,9 +392,9 @@ export function QuotaPanel(props: { api: TuiPluginApi; width?: number }) {
 }
 
 function ConnectionsPanel(props: Props & { width: number }) {
-  const lsp = () => props.api.state.lsp()
-  const mcp = () => props.api.state.mcp()
-  const mcpHealthy = () => mcp().filter((item) => item.status === "connected").length
+  const lsp = createMemo(() => props.api.state.lsp())
+  const mcp = createMemo(() => props.api.state.mcp())
+  const mcpHealthy = createMemo(() => mcp().filter((item) => item.status === "connected").length)
   const attention = () => props.sessionID
     ? props.api.state.session.permission(props.sessionID).length + props.api.state.session.question(props.sessionID).length
     : 0
@@ -443,7 +420,7 @@ function ConnectionsPanel(props: Props & { width: number }) {
 }
 
 function NextAction(props: Props & { width: number }) {
-  const recommendation = () => {
+  const recommendation = createMemo(() => {
     const status = props.sessionID ? props.api.state.session.status(props.sessionID)?.type : undefined
     const mcp = props.api.state.mcp()
     const counts = props.tracker.counts(props.sessionID)
@@ -457,7 +434,7 @@ function NextAction(props: Props & { width: number }) {
       mcpTotal: mcp.length,
       running: counts.running,
     })
-  }
+  })
   const [collapsed, setCollapsed] = createSignal(false)
   return <box flexDirection="column" width="100%">
     <SectionTitle api={props.api} title="Next action" right={() => recommendation().kind === "healthy" ? "OK" : "Review"} width={props.width} collapsed={collapsed()} onToggle={() => setCollapsed(!collapsed())} />
@@ -473,13 +450,8 @@ function NextAction(props: Props & { width: number }) {
 }
 
 function ActivityChart(props: Props & { width: number }) {
-  const [tick, setTick] = createSignal(0)
-  onMount(() => {
-    const off = props.api.event.on("message.updated", () => setTick((value) => value + 1))
-    onCleanup(off)
-  })
-  const telemetry = () => props.sessionID ? sessionTelemetry(props.api, props.sessionID, tick()) : undefined
-  const counts = () => props.tracker.counts(props.sessionID)
+  const telemetry = createMemo(() => props.telemetry ?? (props.sessionID ? sessionTelemetry(props.api, props.sessionID, props.messageRevision) : undefined))
+  const counts = createMemo(() => props.tracker.counts(props.sessionID))
   const mode = () => props.chartMode ?? "tokens"
   const charset = () => props.chartCharset ?? "ascii"
   const detail = () => {
@@ -507,7 +479,8 @@ export function BergCommandCenter(props: Props) {
   const layout = () => layoutFor(dimensions().width, dimensions().height)
   const session = () => props.sessionID ? props.api.state.session.get(props.sessionID) : undefined
   const status = () => props.sessionID ? props.api.state.session.status(props.sessionID)?.type ?? "idle" : "idle"
-  const rows = () => props.tracker.rows(props.sessionID)
+  const rows = createMemo(() => props.tracker.rows(props.sessionID))
+  const telemetry = createMemo(() => props.sessionID ? sessionTelemetry(props.api, props.sessionID, props.messageRevision) : undefined)
   const innerWidth = () => Math.max(38, dimensions().width - 4)
   const paneWidths = () => widePaneWidths(innerWidth())
 
@@ -528,20 +501,20 @@ export function BergCommandCenter(props: Props) {
           {layout() === "wide" ? (
             <box flexDirection="row" width="100%" gap={1} marginTop={1}>
                <box width={paneWidths()[0]} flexDirection="column"><NextAction {...props} width={paneWidths()[0]} /><AgentMatrix {...props} width={paneWidths()[0]} limit={100} /></box>
-               <box width={paneWidths()[1]} flexDirection="column"><ActivityChart {...props} width={paneWidths()[1]} /><ExecutionBlotter {...props} width={paneWidths()[1]} limit={7} /></box>
-               <box width={paneWidths()[2]} flexDirection="column"><Telemetry {...props} width={paneWidths()[2]} /><ConnectionsPanel {...props} width={paneWidths()[2]} /></box>
+               <box width={paneWidths()[1]} flexDirection="column"><ActivityChart {...props} telemetry={telemetry()} width={paneWidths()[1]} /><ExecutionBlotter {...props} width={paneWidths()[1]} limit={7} /></box>
+               <box width={paneWidths()[2]} flexDirection="column"><Telemetry {...props} telemetry={telemetry()} width={paneWidths()[2]} /><ConnectionsPanel {...props} width={paneWidths()[2]} /></box>
             </box>
           ) : layout() === "medium" ? (
             <box flexDirection="row" width="100%" gap={1} marginTop={1}>
-               <box width="50%" flexDirection="column"><NextAction {...props} width={Math.floor(innerWidth() / 2) - 1} /><AgentMatrix {...props} width={Math.floor(innerWidth() / 2) - 1} limit={100} /><Telemetry {...props} width={Math.floor(innerWidth() / 2) - 1} compact /></box>
-               <box width="50%" flexDirection="column"><ActivityChart {...props} width={Math.floor(innerWidth() / 2) - 1} /><ExecutionBlotter {...props} width={Math.floor(innerWidth() / 2) - 1} limit={6} /><ConnectionsPanel {...props} width={Math.floor(innerWidth() / 2) - 1} /></box>
+               <box width="50%" flexDirection="column"><NextAction {...props} width={Math.floor(innerWidth() / 2) - 1} /><AgentMatrix {...props} width={Math.floor(innerWidth() / 2) - 1} limit={100} /><Telemetry {...props} telemetry={telemetry()} width={Math.floor(innerWidth() / 2) - 1} compact /></box>
+               <box width="50%" flexDirection="column"><ActivityChart {...props} telemetry={telemetry()} width={Math.floor(innerWidth() / 2) - 1} /><ExecutionBlotter {...props} width={Math.floor(innerWidth() / 2) - 1} limit={6} /><ConnectionsPanel {...props} width={Math.floor(innerWidth() / 2) - 1} /></box>
             </box>
           ) : (
             <box flexDirection="column" width="100%" marginTop={1}>
                <NextAction {...props} width={innerWidth()} />
                <AgentMatrix {...props} width={innerWidth()} limit={100} />
-               <ActivityChart {...props} width={innerWidth()} />
-               <Telemetry {...props} width={innerWidth()} compact />
+               <ActivityChart {...props} telemetry={telemetry()} width={innerWidth()} />
+               <Telemetry {...props} telemetry={telemetry()} width={innerWidth()} compact />
                <ExecutionBlotter {...props} width={innerWidth()} limit={3} />
                <ConnectionsPanel {...props} width={innerWidth()} />
             </box>

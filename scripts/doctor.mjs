@@ -2,21 +2,28 @@ import { access, readFile } from "node:fs/promises"
 import { constants } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
+import { defaultConfigDir } from "./install-helpers.mjs"
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const required = [
   "package.json",
+  "index.tsx",
   "tui.tsx",
   "src/components.tsx",
   "src/charts.ts",
   "src/data.ts",
   "src/decision-support.ts",
+  "src/diagnostic.ts",
   "src/format.ts",
+  "src/quota-export.ts",
   "src/tracker.ts",
   "src/types.ts",
   "themes/berg-terminal.json",
   "scripts/install.mjs",
+  "scripts/benchmark.mjs",
 ]
+
+const runtimeImports = ["solid-js", "@opentui/solid", "@opentui/core", "@opencode-ai/plugin/tui"]
 
 let failed = false
 console.log("OpenCode Berg Terminal - read-only installation diagnostic")
@@ -29,6 +36,16 @@ for (const relative of required) {
   } catch {
     failed = true
     console.error(`[MISSING] ${relative}`)
+  }
+}
+
+for (const specifier of runtimeImports) {
+  try {
+    import.meta.resolve(specifier)
+    console.log(`[OK] Runtime import ${specifier}`)
+  } catch {
+    failed = true
+    console.error(`[MISSING] Runtime import ${specifier}; run npm install for source-checkout usage`)
   }
 }
 
@@ -62,14 +79,16 @@ for (const [relative, residue] of identityChecks) {
 console.log("[OK] Physical folder name is not part of public identity checks")
 
 const normalizedEntry = join(root, "tui.tsx").replaceAll("\\", "/")
-console.log("\nMerge these values into ~/.config/opencode/tui.json:")
+const configDir = defaultConfigDir()
+const tuiPath = process.env.OPENCODE_TUI_CONFIG ? resolve(process.env.OPENCODE_TUI_CONFIG) : join(configDir, "tui.json")
+console.log(`\nMerge these values into ${tuiPath}:`)
 console.log(JSON.stringify({
   theme: "berg-terminal",
   plugin: [normalizedEntry],
 }, null, 2))
 console.log("\nTheme source:")
 console.log(join(root, "themes", "berg-terminal.json"))
-console.log("Target: ~/.config/opencode/themes/berg-terminal.json")
+console.log(`Target: ${join(configDir, "themes", "berg-terminal.json")}`)
 console.log("Legacy themes/bloomberg-terminal.json is preserved and is a manual deletion candidate.")
 console.log("This diagnostic did not write or modify any file.")
 

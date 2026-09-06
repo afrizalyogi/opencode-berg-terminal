@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+  <title id="title">Berg Terminal tracker benchmark before and after optimization</title>
+  <desc id="desc">Lower is better. Replaying 1000 unchanged events dropped from 79.94 to 3.12 milliseconds. Replaying 5000 unchanged events dropped from 2455.02 to 14.71 milliseconds.</desc>
+  <rect width="1200" height="560" fill="#000000"/>
+  <text x="60" y="62" fill="#FB8B1E" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="30" font-weight="700">TRACKER EVENT BENCHMARK</text>
+  <text x="60" y="94" fill="#9A9A9A" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16">unchanged replay · baseline audit vs optimized median of 7 · Node 26.7.0 / Windows x64</text>
+
+  <text x="60" y="154" fill="#FFFFFF" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="20" font-weight="700">1,000 events</text>
+  <text x="60" y="196" fill="#9A9A9A" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16">before</text>
+  <rect x="160" y="177" width="900" height="26" fill="#FF433D"/>
+  <text x="1075" y="197" fill="#FFFFFF" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16">79.94 ms</text>
+  <text x="60" y="240" fill="#9A9A9A" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16">optimized</text>
+  <rect x="160" y="221" width="35" height="26" fill="#4AF6C3"/>
+  <text x="210" y="241" fill="#4AF6C3" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16">3.12 ms · 25.6× faster</text>
+
+  <text x="60" y="318" fill="#FFFFFF" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="20" font-weight="700">5,000 events</text>
+  <text x="60" y="360" fill="#9A9A9A" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16">before</text>
+  <rect x="160" y="341" width="900" height="26" fill="#FF433D"/>
+  <text x="1075" y="361" fill="#FFFFFF" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16">2455.02 ms</text>
+  <text x="60" y="404" fill="#9A9A9A" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16">optimized</text>
+  <rect x="160" y="385" width="6" height="26" fill="#4AF6C3"/>
+  <text x="180" y="405" fill="#4AF6C3" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16">14.71 ms · 166.9× faster</text>
+
+  <line x1="60" y1="460" x2="1140" y2="460" stroke="#262626"/>
+  <text x="60" y="500" fill="#0068FF" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16">Synthetic tracker workload—not model, API, network, or total OpenCode startup speed.</text>
+  <text x="60" y="528" fill="#9A9A9A" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="14">Reproduce: npm run benchmark · raw data: benchmarks/2026-09-06-windows-node26.json</text>
+</svg>

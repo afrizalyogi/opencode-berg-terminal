@@ -8,8 +8,6 @@ export function sessionTelemetry(api: TuiPluginApi, sessionID: string, tick?: nu
   const result: SessionTelemetry = {
     input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0,
     cost: 0, hasEstimatedCost: false, responses: 0,
-    lastInput: 0, lastOutput: 0,
-    inputSamples: [], outputSamples: [], costSamples: [],
   }
 
   for (const message of api.state.session.messages(sessionID)) {
@@ -23,12 +21,6 @@ export function sessionTelemetry(api: TuiPluginApi, sessionID: string, tick?: nu
     const cost = safeNumber(message.cost)
     if (input + output + reasoning + cacheRead + cacheWrite > 0 || estimatedCost) {
       result.responses++
-      result.lastInput = input
-      result.lastOutput = output
-      result.lastCost = estimatedCost ? cost : undefined
-      result.inputSamples.push(input)
-      result.outputSamples.push(output)
-      result.costSamples.push(estimatedCost ? cost : 0)
     }
     result.input = safeNumber(result.input + input)
     result.output = safeNumber(result.output + output)

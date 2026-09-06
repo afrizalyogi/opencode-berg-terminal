@@ -1,0 +1,25 @@
+{
+  "date": "2026-09-06",
+  "runtime": "Node.js v26.7.0",
+  "platform": "Windows x64",
+  "method": "Synthetic message.part.updated task events in one process; lower is better. Baseline comes from the pre-change audit at af7835e; optimized values are medians of 7 rounds from scripts/benchmark.mjs.",
+  "baseline": {
+    "revision": "af7835e",
+    "entries": {
+      "1000": { "insertMs": 79.53, "unchangedReplayMs": 79.94 },
+      "5000": { "insertMs": 1985.23, "unchangedReplayMs": 2455.02 }
+    },
+    "safetyReconciliationsPerMinute": 60,
+    "automaticQuotaNetworkRequestsAtMount": "up to 2"
+  },
+  "optimized": {
+    "entries": {
+      "1000": { "insertMs": 2.71, "unchangedReplayMs": 3.12 },
+      "5000": { "insertMs": 13.12, "unchangedReplayMs": 14.71 }
+    },
+    "safetyReconciliationsPerMinute": 4,
+    "automaticQuotaNetworkRequestsAtMount": 0,
+    "unchangedReplayRenders": 0,
+    "unchangedReplayInvalidations": 0
+  }
+}

@@ -27,22 +27,36 @@ const chartModes: ChartMode[] = ["tokens", "costs", "work-status"]
 const tui: TuiPlugin = async (api) => {
   createRoot((disposeRoot) => {
     diagnostic("tui.initialized", { path: diagnosticPath, instance: diagnosticInstance })
+    let renderQueued = false
+    const requestRender = () => {
+      if (renderQueued) return
+      renderQueued = true
+      queueMicrotask(() => {
+        renderQueued = false
+        if (!api.lifecycle.signal.aborted) api.renderer.requestRender()
+      })
+    }
     const [trackerRevision, setTrackerRevision] = createSignal(0)
     const tracker = createExecutionTracker(api, {
       read: () => { trackerRevision() },
       invalidate: () => setTrackerRevision((revision) => revision + 1),
+      requestRender,
     })
+    const [messageRevision, setMessageRevision] = createSignal(0)
     const [selectedIndex, setSelectedIndex] = createSignal(0)
     const storedMode = api.kv.get<ChartMode>("berg.chart-mode", "tokens")
     const storedCharset = api.kv.get<ChartCharset>("berg.chart-charset", "ascii")
     const [chartMode, setChartMode] = createSignal<ChartMode>(chartModes.includes(storedMode) ? storedMode : "tokens")
     const [chartCharset, setChartCharset] = createSignal<ChartCharset>(storedCharset === "unicode" ? "unicode" : "ascii")
     
-    // Global Clock for Reactivity
+    // Keep visible running durations live without rendering idle/home views.
     const [now, setNow] = createSignal(Date.now())
     const clockTimer = setInterval(() => {
+      const route = api.route.current.name
+      if (route !== "session" && route !== "berg-command-center") return
+      if (!tracker.hasRunning(sessionForNavigation(api))) return
       setNow(Date.now())
-      api.renderer.requestRender()
+      requestRender()
     }, 1_000)
 
     const selectedRows = () => tracker.rows(sessionForNavigation(api))
@@ -50,7 +64,7 @@ const tui: TuiPlugin = async (api) => {
       const count = selectedRows().length
       if (count === 0) return
       setSelectedIndex((current) => ((Math.min(current, count - 1) + delta + count) % count))
-      api.renderer.requestRender()
+      requestRender()
     }
     const openSelection = () => {
       const rows = selectedRows()
@@ -64,18 +78,18 @@ const tui: TuiPlugin = async (api) => {
       const next = chartModes[(chartModes.indexOf(chartMode()) + 1) % chartModes.length]
       setChartMode(next)
       api.kv.set("berg.chart-mode", next)
-      api.renderer.requestRender()
+      requestRender()
     }
     const toggleCharset = () => {
       const next = chartCharset() === "ascii" ? "unicode" : "ascii"
       setChartCharset(next)
       api.kv.set("berg.chart-charset", next)
-      api.renderer.requestRender()
+      requestRender()
     }
 
     const offRoutes = api.route.register([{
       name: "berg-command-center",
-      render: ({ params }) => <BergCommandCenter api={api} tracker={tracker} now={now} sessionID={param(params, "sessionID")} selectedIndex={selectedIndex()} onSelect={setSelectedIndex} chartMode={chartMode()} chartCharset={chartCharset()} />,
+      render: ({ params }) => <BergCommandCenter api={api} tracker={tracker} now={now} sessionID={param(params, "sessionID")} selectedIndex={selectedIndex()} onSelect={setSelectedIndex} chartMode={chartMode()} chartCharset={chartCharset()} messageRevision={messageRevision()} />,
     }])
 
     const offKeys = api.keymap.registerLayer({
@@ -208,19 +222,13 @@ const tui: TuiPlugin = async (api) => {
       },
     })
 
-    const renderEvents = ["message.updated", "message.part.updated", "session.created", "session.status", "session.idle", "session.error", "session.next.tool.called", "session.next.tool.success", "session.next.tool.failed"] as const
-    let renderQueued = false
-    const requestActiveRender = (event: unknown) => {
-      const kind = typeof event === "object" && event !== null && "type" in event ? String((event as { type: unknown }).type) : "unknown"
+    const renderEvents = ["message.updated", "session.status", "session.idle", "session.error"] as const
+    const requestActiveRender = (kind: string) => {
       diagnostic("tui.render.requested", { event: kind })
-      if (renderQueued) return
-      renderQueued = true
-      queueMicrotask(() => {
-        renderQueued = false
-        if (!api.lifecycle.signal.aborted) api.renderer.requestRender()
-      })
+      if (kind === "message.updated") setMessageRevision((revision) => revision + 1)
+      requestRender()
     }
-    const offEvents = renderEvents.map((name) => api.event.on(name, requestActiveRender))
+    const offEvents = renderEvents.map((name) => api.event.on(name, () => requestActiveRender(name)))
     const offSessionUpdated = api.event.on("session.updated", (event) => {
       if (!event.properties.info.parentID) rememberSession(event.properties.info.id)
     })

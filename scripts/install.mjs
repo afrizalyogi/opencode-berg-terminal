@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { copyFile, lstat, mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -34,15 +36,17 @@ async function atomicWrite(path, content, stamp) {
 
 const options = parseArgs(process.argv.slice(2))
 const configDir = resolve(options.configDir ?? defaultConfigDir())
-const tuiPath = join(configDir, "tui.json")
+const tuiPath = options.configDir || !process.env.OPENCODE_TUI_CONFIG
+  ? join(configDir, "tui.json")
+  : resolve(process.env.OPENCODE_TUI_CONFIG)
 const themeDir = join(configDir, "themes")
 const themePath = join(themeDir, "berg-terminal.json")
-const normalizedPlugin = pluginSource.replaceAll("\\", "/")
+const normalizedPlugin = options.npm ? "opencode-berg-terminal" : pluginSource.replaceAll("\\", "/")
 
 console.log(`Mode: ${options.apply ? "apply" : "dry-run"}`)
 console.log(`Config directory: ${configDir}`)
 console.log(`TUI config: ${tuiPath}`)
-console.log(`Plugin source: ${pluginSource}`)
+console.log(`Plugin: ${normalizedPlugin}`)
 console.log(`Theme source: ${themeSource}`)
 console.log(`Theme target: ${themePath}`)
 
@@ -68,8 +72,16 @@ if (writeTheme && await inspect(themePath)) {
   console.log(`Theme already current: ${themePath}`)
 }
 
-console.log("Planned tui.json:")
-console.log(JSON.stringify(merged.config, null, 2))
+console.log("Planned changes:")
+console.log(JSON.stringify({
+  pluginToAdd: normalizedPlugin,
+  theme: options.theme && !options.keepCurrentTheme ? "berg-terminal" : "unchanged",
+  preservedTopLevelKeys: Object.keys(current).filter((key) => key !== "plugin" && key !== "theme").length,
+}, null, 2))
+if (options.verbose) {
+  console.log("Full merged tui.json (--verbose):")
+  console.log(JSON.stringify(merged.config, null, 2))
+}
 if (!options.apply) {
   console.log("Dry-run complete. Re-run with --apply to write the listed targets.")
 } else {

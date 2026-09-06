@@ -15,6 +15,16 @@ describe("installer helpers", () => {
     assert.equal(defaultConfigDir({ XDG_CONFIG_HOME: "/tmp/config" }, "/home/example"), resolve("/tmp/config", "opencode"))
   })
 
+  test("prefers the OpenCode-specific config directory", () => {
+    assert.equal(defaultConfigDir({ OPENCODE_CONFIG_DIR: "/tmp/opencode", XDG_CONFIG_HOME: "/tmp/config" }, "/home/example"), resolve("/tmp/opencode"))
+  })
+
+  test("supports npm-package and concise verbose installer modes", () => {
+    const parsed = parseArgs(["--npm", "--verbose"])
+    assert.equal(parsed.npm, true)
+    assert.equal(parsed.verbose, true)
+  })
+
   test("preserves keys and plugins while adding Berg Terminal", () => {
     const result = mergeTuiConfig({ theme: "old", plugin: ["existing"], keybinds: { help: "f3" } }, "/project/tui.tsx")
     assert.deepEqual(result.config, { theme: "berg-terminal", plugin: ["existing", "/project/tui.tsx"], keybinds: { help: "f3" } })

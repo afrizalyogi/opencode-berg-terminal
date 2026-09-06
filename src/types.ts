@@ -19,6 +19,7 @@ export interface ExecutionEntry {
   summary?: string
   agent?: string
   startedAt: number
+  correlationAt?: number
   endedAt?: number
   terminalOverride?: "done" | "error"
 }
@@ -41,12 +42,6 @@ export interface SessionTelemetry {
   cost: number
   hasEstimatedCost: boolean
   responses: number
-  lastInput: number
-  lastOutput: number
-  lastCost?: number
-  inputSamples: number[]
-  outputSamples: number[]
-  costSamples: number[]
 }
 
 export type CockpitLayout = "wide" | "medium" | "narrow" | "minimal"
