@@ -24,18 +24,6 @@ function sessionForNavigation(api: TuiPluginApi): string | undefined {
 
 const chartModes: ChartMode[] = ["tokens", "costs", "work-status"]
 
-function HomeBottomCounts(props: { api: TuiPluginApi; tracker: ReturnType<typeof createExecutionTracker> }) {
-  const counts = createMemo(() => props.tracker.counts())
-  return (
-    <text>
-      <span style={{ fg: props.api.theme.current.warning }}>Working {counts().running}</span>
-      <span style={{ fg: props.api.theme.current.textMuted }}>  OK </span><span style={{ fg: props.api.theme.current.success }}>{counts().done}</span>
-      <span style={{ fg: props.api.theme.current.textMuted }}>  ERR </span><span style={{ fg: props.api.theme.current.error }}>{counts().error}</span>
-      <span style={{ fg: props.api.theme.current.textMuted }}>  Total {counts().total}</span>
-    </text>
-  )
-}
-
 const tui: TuiPlugin = async (api) => {
   createRoot((disposeRoot) => {
     diagnostic("tui.initialized", { path: diagnosticPath, instance: diagnosticInstance })
@@ -173,7 +161,7 @@ const tui: TuiPlugin = async (api) => {
           )
         },
         home_bottom() {
-          return <HomeBottomCounts api={api} tracker={tracker} />
+          return null
         },
         home_footer() {
           return null
