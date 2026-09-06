@@ -23,5 +23,5 @@
 
   <line x1="60" y1="460" x2="1140" y2="460" stroke="#262626"/>
   <text x="60" y="500" fill="#0068FF" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16">Synthetic tracker workload—not model, API, network, or total OpenCode startup speed.</text>
-  <text x="60" y="528" fill="#9A9A9A" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="14">Reproduce: npm run benchmark · raw data: benchmarks/2026-09-06-windows-node26.json</text>
+  <text x="60" y="528" fill="#9A9A9A" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="14">Measured locally on Node.js 26.7.0 / Windows x64. Results vary by machine.</text>
 </svg>

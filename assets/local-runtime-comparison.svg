@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="590" viewBox="0 0 1200 590" role="img" aria-labelledby="title desc">
+  <title id="title">Local OpenCode runtime comparison</title>
+  <desc id="desc">Comparison of full config-ready initialization and peak memory for OpenCode plain, OpenCode with Berg, and a local Oh My OpenAgent profile.</desc>
+  <rect width="1200" height="590" fill="#000000"/>
+  <style>
+    .title{font:700 30px ui-monospace,SFMono-Regular,Consolas,monospace}.h{font:700 19px ui-monospace,SFMono-Regular,Consolas,monospace}.t{font:15px ui-monospace,SFMono-Regular,Consolas,monospace}.s{font:13px ui-monospace,SFMono-Regular,Consolas,monospace}
+  </style>
+  <text x="55" y="55" class="title" fill="#FB8B1E">LOCAL RUNTIME COMPARISON</text>
+  <text x="55" y="84" class="t" fill="#9A9A9A">same machine and OpenCode executable · average values · lower is better</text>
+
+  <text x="55" y="135" class="h" fill="#FFFFFF">Full config-ready initialization · 10 runs</text>
+  <text x="55" y="172" class="t" fill="#B8B8B8">Plain</text><rect x="245" y="153" width="264" height="24" fill="#777777"/><text x="523" y="172" class="t" fill="#FFFFFF">5347.76 ms</text>
+  <text x="55" y="207" class="t" fill="#FB8B1E">Berg</text><rect x="245" y="188" width="261" height="24" fill="#FB8B1E"/><text x="520" y="207" class="t" fill="#FB8B1E">5286.73 ms</text>
+  <text x="55" y="242" class="t" fill="#5EA0FF">Oh My OpenAgent*</text><rect x="245" y="223" width="500" height="24" fill="#0068FF"/><text x="759" y="242" class="t" fill="#5EA0FF">10128.47 ms</text>
+
+  <text x="55" y="305" class="h" fill="#FFFFFF">Peak parent-process RSS during config · 5 runs</text>
+  <text x="55" y="342" class="t" fill="#B8B8B8">Plain</text><rect x="245" y="323" width="283" height="24" fill="#777777"/><text x="542" y="342" class="t" fill="#FFFFFF">465.08 MiB</text>
+  <text x="55" y="377" class="t" fill="#FB8B1E">Berg</text><rect x="245" y="358" width="339" height="24" fill="#FB8B1E"/><text x="598" y="377" class="t" fill="#FB8B1E">556.24 MiB</text>
+  <text x="55" y="412" class="t" fill="#5EA0FF">Oh My OpenAgent*</text><rect x="245" y="393" width="400" height="24" fill="#0068FF"/><text x="659" y="412" class="t" fill="#5EA0FF">656.62 MiB</text>
+
+  <line x1="55" y1="475" x2="1145" y2="475" stroke="#262626"/>
+  <text x="55" y="506" class="s" fill="#9A9A9A">*This is one local opendev profile, not a universal result for every Oh My OpenAgent installation.</text>
+  <text x="55" y="530" class="s" fill="#9A9A9A">Full config-ready: 10 runs. TUI FPS/model latency excluded.</text>
+  <text x="55" y="554" class="s" fill="#0068FF">Measured locally on Windows x64 with OpenCode 1.18.29.</text>
+</svg>

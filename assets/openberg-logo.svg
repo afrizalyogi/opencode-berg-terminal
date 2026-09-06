@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="150" viewBox="0 0 720 150" role="img" aria-labelledby="title desc">
+  <title id="title">OpenBerg</title>
+  <desc id="desc">OpenBerg logo with the OpenCode command terminal subtitle.</desc>
+  <rect width="720" height="150" fill="#000000"/>
+  <text x="360" y="86" text-anchor="middle" fill="#FB8B1E" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="64" font-weight="900" letter-spacing="5">OPENBERG</text>
+  <text x="360" y="121" text-anchor="middle" fill="#9A9A9A" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="18" letter-spacing="1">OpenCode command terminal</text>
+</svg>

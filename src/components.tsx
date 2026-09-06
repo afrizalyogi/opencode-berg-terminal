@@ -8,7 +8,7 @@ import { bar } from "./charts"
 import { configuredAgents, sessionTelemetry } from "./data"
 import { recommendNext } from "./decision-support"
 import { columns, duration, layoutFor, metric, money, padLeft, padRight, statusLabel, threeColumnWidths, truncate, widePaneWidths } from "./format"
-import { fetchQuotaSnapshot, type QuotaSnapshot } from "./quota-export"
+import type { QuotaSnapshot } from "./quota-export"
 import type { ExecutionTracker } from "./tracker"
 import type { ChartCharset, ChartMode, ExecutionStatus, ExecutionRow, AgentRow, SessionTelemetry } from "./types"
 import { diagnostic, diagnosticsEnabled } from "./diagnostic"
@@ -285,6 +285,7 @@ export function QuotaPanel(props: { api: TuiPluginApi; width?: number }) {
     if (refreshing()) return
     setRefreshing(true)
     try {
+      const { fetchQuotaSnapshot } = await import("./quota-export")
       const next = await fetchQuotaSnapshot({ force: true, live: true })
       setSnapshot(next)
       if (notify) {

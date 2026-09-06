@@ -1,8 +1,4 @@
-import { join } from "node:path"
-import { tmpdir } from "node:os"
-
 export const diagnosticInstance = `${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-export const diagnosticPath = join(tmpdir(), `berg-terminal-${diagnosticInstance}.ndjson`)
 export const diagnosticsEnabled = process.env.BERG_TERMINAL_DIAGNOSTIC === "1"
 
 const sensitiveKey = /(?:authorization|api[-_]?key|access|refresh|secret|password|token|cookie|error)/i
@@ -22,6 +18,13 @@ function safeValue(value: unknown, key = ""): unknown {
 }
 
 let pendingWrite = Promise.resolve()
+let diagnosticPath: Promise<string> | undefined
+
+function pathForDiagnostics(): Promise<string> {
+  diagnosticPath ??= Promise.all([import("node:path"), import("node:os")])
+    .then(([path, os]) => path.join(os.tmpdir(), `berg-terminal-${diagnosticInstance}.ndjson`))
+  return diagnosticPath
+}
 
 export function diagnostic(kind: string, data: Record<string, unknown> | (() => Record<string, unknown>) = {}): void {
   if (!diagnosticsEnabled) return
@@ -30,7 +33,7 @@ export function diagnostic(kind: string, data: Record<string, unknown> | (() => 
   pendingWrite = pendingWrite
     .then(async () => {
       const { appendFile } = await import("node:fs/promises")
-      await appendFile(diagnosticPath, `${line}\n`, { encoding: "utf8", mode: 0o600 })
+      await appendFile(await pathForDiagnostics(), `${line}\n`, { encoding: "utf8", mode: 0o600 })
     })
     .catch(() => {})
 }

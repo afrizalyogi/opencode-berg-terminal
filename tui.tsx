@@ -6,7 +6,7 @@ import { AgentMatrix, BergCommandCenter, CommandEntry, TerminalTabs, ExecutionBl
 import { columns } from "./src/format"
 import { createExecutionTracker } from "./src/tracker"
 import type { ChartCharset, ChartMode } from "./src/types"
-import { diagnostic, diagnosticInstance, diagnosticPath } from "./src/diagnostic"
+import { diagnostic, diagnosticInstance } from "./src/diagnostic"
 
 function param(params: Record<string, unknown> | undefined, key: string): string | undefined {
   const value = params?.[key]
@@ -26,7 +26,7 @@ const chartModes: ChartMode[] = ["tokens", "costs", "work-status"]
 
 const tui: TuiPlugin = async (api) => {
   createRoot((disposeRoot) => {
-    diagnostic("tui.initialized", { path: diagnosticPath, instance: diagnosticInstance })
+    diagnostic("tui.initialized", { instance: diagnosticInstance })
     let renderQueued = false
     const requestRender = () => {
       if (renderQueued) return

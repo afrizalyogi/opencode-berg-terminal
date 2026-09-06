@@ -26,7 +26,6 @@
     "tui.tsx",
     "src",
     "assets",
-    "benchmarks",
     "themes/berg-terminal.json",
     "examples/tui.json",
     "scripts",
