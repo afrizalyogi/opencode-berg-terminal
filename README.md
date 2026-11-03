@@ -2,7 +2,10 @@
   <img src="assets/openberg-logo.svg" alt="OpenBerg — OpenCode command terminal" width="720">
 </p>
 
-An open-source **TUI plugin and theme for OpenCode**. Berg adds a responsive command center, realtime agent/execution tracking, usage telemetry, connection status, and opt-in quota monitoring without replacing OpenCode's model runtime.
+[![CI](https://github.com/afrizalyogi/opencode-berg-terminal/actions/workflows/ci.yml/badge.svg)](https://github.com/afrizalyogi/opencode-berg-terminal/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+A **Bloomberg-terminal-style TUI plugin and theme for OpenCode**. Berg adds a responsive command center, realtime agent/execution tracking, usage telemetry, connection status, and opt-in quota monitoring without replacing OpenCode's model runtime.
 
 > `F2` opens the command center. `F1` returns to chat.
 
@@ -72,6 +75,16 @@ What the data supports:
 - Emails are masked.
 - Diagnostics are disabled by default and redact sensitive fields when enabled with `BERG_TERMINAL_DIAGNOSTIC=1`.
 
+What **Load live quota** reads, and only after you click it:
+
+| Source | File | Sent to |
+|---|---|---|
+| Antigravity cached quota | `$OPENCODE_CONFIG_DIR/antigravity-accounts.json` | nowhere (read locally) |
+| OpenAI / ChatGPT OAuth token | `$OPENCODE_DATA_DIR/auth.json` | `chatgpt.com/backend-api/wham/usage` |
+| OpenRouter API key | `$OPENCODE_DATA_DIR/auth.json` | `openrouter.ai/api/v1/key` |
+
+The code is in [`src/quota-export.ts`](src/quota-export.ts).
+
 ## Requirements
 
 - Node.js 22.18+ and npm 10+
@@ -80,10 +93,10 @@ What the data supports:
 ## Install
 
 ```bash
-git clone <your-repository-url>
+git clone https://github.com/afrizalyogi/opencode-berg-terminal.git
 cd opencode-berg-terminal
 npm install
-node scripts/install.mjs # dry run
+node scripts/install.mjs          # dry run: prints what will change
 node scripts/install.mjs --apply
 ```
 
@@ -138,6 +151,10 @@ Models are examples; replace them with provider/model IDs available in your Open
 - `Alt+Enter`: open selected child session
 - `Alt+C`: change activity metric
 - `Alt+U`: toggle ASCII/Unicode charts
+
+## Contributing
+
+Issues and pull requests are welcome. Run the checks below before opening a PR.
 
 ## Development
 

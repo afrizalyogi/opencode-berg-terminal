@@ -1,9 +1,26 @@
 {
   "name": "opencode-berg-terminal",
-  "version": "0.2.0",
-  "description": "Source-first OpenCode TUI plugin and theme with a responsive Berg command center",
-  "private": false,
+  "version": "1.1.0",
+  "description": "Bloomberg-style command center TUI plugin and theme for OpenCode: realtime agents, delegated executions, usage and quota",
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "tui",
+    "terminal",
+    "bloomberg",
+    "theme",
+    "ai-agents",
+    "opentui"
+  ],
+  "homepage": "https://github.com/afrizalyogi/opencode-berg-terminal#readme",
+  "bugs": "https://github.com/afrizalyogi/opencode-berg-terminal/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/afrizalyogi/opencode-berg-terminal.git"
+  },
   "license": "MIT",
+  "author": "Afrizal Yogi Pratama",
+  "private": false,
   "type": "module",
   "engines": {
     "node": ">=22.18.0",
@@ -25,7 +42,7 @@
     "index.tsx",
     "tui.tsx",
     "src",
-    "assets",
+    "!src/**/*.test.ts",
     "themes/berg-terminal.json",
     "examples/tui.json",
     "scripts",
