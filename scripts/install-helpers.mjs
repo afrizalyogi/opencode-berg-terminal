@@ -7,14 +7,13 @@ export function defaultConfigDir(env = process.env, home = homedir()) {
 }
 
 export function parseArgs(argv) {
-  const options = { apply: false, theme: true, keepCurrentTheme: false, replaceLegacy: false, npm: false, verbose: false, configDir: undefined }
+  const options = { apply: false, theme: true, keepCurrentTheme: false, replaceLegacy: false, verbose: false, configDir: undefined }
   for (let index = 0; index < argv.length; index++) {
     const argument = argv[index]
     if (argument === "--apply") options.apply = true
     else if (argument === "--no-theme") options.theme = false
     else if (argument === "--keep-current-theme") options.keepCurrentTheme = true
     else if (argument === "--replace-legacy") options.replaceLegacy = true
-    else if (argument === "--npm") options.npm = true
     else if (argument === "--verbose") options.verbose = true
     else if (argument === "--config-dir") {
       const value = argv[++index]

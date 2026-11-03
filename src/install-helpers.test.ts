@@ -19,9 +19,8 @@ describe("installer helpers", () => {
     assert.equal(defaultConfigDir({ OPENCODE_CONFIG_DIR: "/tmp/opencode", XDG_CONFIG_HOME: "/tmp/config" }, "/home/example"), resolve("/tmp/opencode"))
   })
 
-  test("supports npm-package and concise verbose installer modes", () => {
-    const parsed = parseArgs(["--npm", "--verbose"])
-    assert.equal(parsed.npm, true)
+  test("supports concise verbose installer mode", () => {
+    const parsed = parseArgs(["--verbose"])
     assert.equal(parsed.verbose, true)
   })
 

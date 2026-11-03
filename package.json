@@ -20,36 +20,21 @@
   },
   "license": "MIT",
   "author": "Afrizal Yogi Pratama",
-  "private": false,
+  "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.18.0",
+    "node": ">=22.23.4",
     "npm": ">=10"
   },
   "oc-plugin": [
     "tui"
   ],
   "main": "./index.tsx",
-  "bin": {
-    "opencode-berg-terminal": "./scripts/install.mjs"
-  },
   "exports": {
     ".": "./index.tsx",
     "./theme": "./themes/berg-terminal.json",
     "./tui": "./tui.tsx"
   },
-  "files": [
-    "index.tsx",
-    "tui.tsx",
-    "src",
-    "!src/**/*.test.ts",
-    "themes/berg-terminal.json",
-    "examples/tui.json",
-    "scripts",
-    "tsconfig.json",
-    "README.md",
-    "LICENSE"
-  ],
   "scripts": {
     "benchmark": "node ./scripts/benchmark.mjs",
     "doctor": "node ./scripts/doctor.mjs",

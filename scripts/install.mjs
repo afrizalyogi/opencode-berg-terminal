@@ -41,7 +41,7 @@ const tuiPath = options.configDir || !process.env.OPENCODE_TUI_CONFIG
   : resolve(process.env.OPENCODE_TUI_CONFIG)
 const themeDir = join(configDir, "themes")
 const themePath = join(themeDir, "berg-terminal.json")
-const normalizedPlugin = options.npm ? "opencode-berg-terminal" : pluginSource.replaceAll("\\", "/")
+const normalizedPlugin = pluginSource.replaceAll("\\", "/")
 
 console.log(`Mode: ${options.apply ? "apply" : "dry-run"}`)
 console.log(`Config directory: ${configDir}`)
