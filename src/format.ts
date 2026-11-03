@@ -41,16 +41,6 @@ export function truncate(value: unknown, width: number): string {
   return `${result}...`
 }
 
-export function padRight(value: unknown, width: number): string {
-  const text = truncate(value, width)
-  return `${text}${" ".repeat(Math.max(0, width - cellSize(text)))}`
-}
-
-export function padLeft(value: unknown, width: number): string {
-  const text = truncate(value, width)
-  return `${" ".repeat(Math.max(0, width - cellSize(text)))}${text}`
-}
-
 export function columns(left: unknown, right: unknown, width: number): string {
   const safeRight = truncate(right, width)
   const leftWidth = Math.max(0, width - cellSize(safeRight))
@@ -83,17 +73,6 @@ export function statusLabel(status: "running" | "done" | "error"): string {
   if (status === "running") return "WORK"
   if (status === "error") return "ERR"
   return "OK"
-}
-
-export function threeColumnWidths(width: number, middleMinimum: number): [number, number, number] {
-  const available = Math.max(0, Math.floor(width))
-  const status = Math.min(7, Math.max(1, Math.floor((available - 2) / 4)))
-  const remaining = Math.max(0, available - status - 2)
-  const first = Math.max(0, Math.ceil(remaining * 0.42))
-  const second = Math.max(0, remaining - first)
-  if (second >= middleMinimum || first === 0) return [first, second, status]
-  const transfer = Math.min(first, middleMinimum - second)
-  return [first - transfer, second + transfer, status]
 }
 
 export function widePaneWidths(width: number): [number, number, number] {

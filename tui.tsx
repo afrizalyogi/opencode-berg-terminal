@@ -1,9 +1,8 @@
 /** @jsxImportSource @opentui/solid */
 
 import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
-import { createSignal, createMemo, createRoot } from "solid-js"
-import { AgentMatrix, BergCommandCenter, CommandEntry, TerminalTabs, ExecutionBlotter, OpenBergLogo, QuotaPanel, SectionTitle, Telemetry, activeSessionID } from "./src/components"
-import { columns } from "./src/format"
+import { createSignal, createRoot } from "solid-js"
+import { AgentMatrix, BergCommandCenter, CommandEntry, ExecutionBlotter, OpenBergLogo, QuotaPanel, SectionTitle, activeSessionID } from "./src/components"
 import { createExecutionTracker } from "./src/tracker"
 import type { ChartCharset, ChartMode } from "./src/types"
 import { diagnostic, diagnosticInstance } from "./src/diagnostic"
@@ -87,6 +86,8 @@ const tui: TuiPlugin = async (api) => {
       requestRender()
     }
 
+    const inCommandCenter = () => api.route.current.name === "berg-command-center"
+
     const offRoutes = api.route.register([{
       name: "berg-command-center",
       render: ({ params }) => <BergCommandCenter api={api} tracker={tracker} now={now} sessionID={param(params, "sessionID")} selectedIndex={selectedIndex()} onSelect={setSelectedIndex} chartMode={chartMode()} chartCharset={chartCharset()} messageRevision={messageRevision()} />,
@@ -121,35 +122,35 @@ const tui: TuiPlugin = async (api) => {
           name: "berg.next-execution",
           title: "Berg: Select next execution",
           category: "Berg Terminal",
-          enabled: () => api.route.current.name === "berg-command-center",
+          enabled: inCommandCenter,
           run() { moveSelection(1) },
         },
         {
           name: "berg.previous-execution",
           title: "Berg: Select previous execution",
           category: "Berg Terminal",
-          enabled: () => api.route.current.name === "berg-command-center",
+          enabled: inCommandCenter,
           run() { moveSelection(-1) },
         },
         {
           name: "berg.open-execution",
           title: "Berg: Open selected execution",
           category: "Berg Terminal",
-          enabled: () => api.route.current.name === "berg-command-center",
+          enabled: inCommandCenter,
           run() { openSelection() },
         },
         {
           name: "berg.next-chart",
           title: "Berg: Show next activity chart",
           category: "Berg Terminal",
-          enabled: () => api.route.current.name === "berg-command-center",
+          enabled: inCommandCenter,
           run: nextChart,
         },
         {
           name: "berg.toggle-chart-charset",
           title: "Berg: Toggle chart character set",
           category: "Berg Terminal",
-          enabled: () => api.route.current.name === "berg-command-center",
+          enabled: inCommandCenter,
           run: toggleCharset,
         },
       ],
@@ -205,7 +206,7 @@ const tui: TuiPlugin = async (api) => {
             </box>
           )
         },
-        sidebar_footer(_ctx, props) {
+        sidebar_footer() {
           return null
         },
         home_prompt_right() {

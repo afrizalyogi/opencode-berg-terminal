@@ -1,4 +1,4 @@
-export type ChartCharset = "ascii" | "unicode"
+import type { ChartCharset } from "./types"
 
 export function bar(value: number, max: number, width: number, charset: ChartCharset = "ascii"): string {
   const safeWidth = Math.max(0, Math.floor(width))

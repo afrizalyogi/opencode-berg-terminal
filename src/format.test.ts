@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { describe, test } from "node:test"
-import { columns, duration, layoutFor, metric, money, padLeft, padRight, safeNumber, sanitizeLine, statusLabel, threeColumnWidths, truncate, widePaneWidths } from "./format.ts"
+import { columns, duration, layoutFor, metric, money, safeNumber, sanitizeLine, statusLabel, truncate, widePaneWidths } from "./format.ts"
 
 describe("Berg Terminal formatting", () => {
   test("normalizes unsafe numeric values", () => {
@@ -21,8 +21,6 @@ describe("Berg Terminal formatting", () => {
   })
 
   test("aligns fixed-width terminal columns", () => {
-    assert.equal(padRight("ABC", 5), "ABC  ")
-    assert.equal(padLeft("ABC", 5), "  ABC")
     assert.equal(columns("LEFT", "RIGHT", 12), "LEFT   RIGHT")
   })
 
@@ -42,16 +40,9 @@ describe("Berg Terminal formatting", () => {
     assert.equal(duration(0, 4_000, 100_000), "4 S")
   })
 
-  test("uses compact status labels and gives data columns more room", () => {
+  test("uses compact status labels", () => {
     assert.equal(statusLabel("error"), "ERR")
     assert.equal(statusLabel("running"), "WORK")
-    const [first, second, status] = threeColumnWidths(31, 7)
-    assert.ok(first > status)
-    assert.ok(second > status)
-    assert.equal(first + second + status + 2, 31)
-    const narrow = threeColumnWidths(9, 2)
-    assert.ok(narrow[0] > narrow[2])
-    assert.ok(narrow[1] > narrow[2])
   })
 
   test("allocates wider first and second command-center panes", () => {

@@ -7,7 +7,7 @@ import { createEffect, createMemo, createSignal, onCleanup, onMount, For, Show }
 import { bar } from "./charts"
 import { configuredAgents, sessionTelemetry } from "./data"
 import { recommendNext } from "./decision-support"
-import { columns, duration, layoutFor, metric, money, padLeft, padRight, statusLabel, threeColumnWidths, truncate, widePaneWidths } from "./format"
+import { columns, duration, layoutFor, metric, money, statusLabel, truncate, widePaneWidths } from "./format"
 import type { QuotaSnapshot } from "./quota-export"
 import type { ExecutionTracker } from "./tracker"
 import type { ChartCharset, ChartMode, ExecutionStatus, ExecutionRow, AgentRow, SessionTelemetry } from "./types"
@@ -84,7 +84,17 @@ function ExecutionRowRenderer(props: {
   )
 }
 
-function currentSessionID(api: TuiPluginApi): string | undefined {
+/** Runs action on Enter/Space key presses and swallows the event. */
+function onActivateKey(action: () => void) {
+  return (event: KeyEvent) => {
+    if (event.eventType !== "press" || (event.name !== "return" && event.name !== "enter" && event.name !== "space")) return
+    event.preventDefault()
+    event.stopPropagation()
+    action()
+  }
+}
+
+export function activeSessionID(api: TuiPluginApi): string | undefined {
   const route = api.route.current
   if (route.name !== "session" || !route.params) return undefined
   const value = route.params.sessionID
@@ -98,7 +108,6 @@ function statusColor(api: TuiPluginApi, status: ExecutionStatus) {
 }
 
 export function SectionTitle(props: { api: TuiPluginApi; title: string; right?: string | (() => string); width?: number; native?: boolean; collapsed?: boolean; onToggle?: () => void }) {
-  const width = () => props.width ?? 32
   const titleText = () => props.onToggle ? `${props.collapsed ? "+" : "v"} ${props.title}` : props.title
   const rightContent = () => typeof props.right === "function" ? props.right() : (props.right ?? "")
   const onMouseDown = (event: MouseEvent) => {
@@ -107,21 +116,10 @@ export function SectionTitle(props: { api: TuiPluginApi; title: string; right?: 
     event.stopPropagation()
     props.onToggle()
   }
-  const onKeyDown = (event: KeyEvent) => {
-    if (!props.onToggle || event.eventType !== "press" || (event.name !== "return" && event.name !== "enter" && event.name !== "space")) return
-    event.preventDefault()
-    event.stopPropagation()
-    props.onToggle()
-  }
+  const onKeyDown = (event: KeyEvent) => { if (props.onToggle) onActivateKey(props.onToggle)(event) }
 
-  if (props.native) return (
-    <box width="100%" flexDirection="row" justifyContent="space-between" marginTop={1} backgroundColor={props.api.theme.current.primary} paddingLeft={1} paddingRight={1} focusable={Boolean(props.onToggle)} onMouseDown={onMouseDown} onKeyDown={onKeyDown}>
-      <text selectable={false} fg={props.api.theme.current.background} attributes={1}>{titleText()}</text>
-      <text selectable={false} fg={props.api.theme.current.background}>{rightContent()}</text>
-    </box>
-  )
   return (
-    <box width="100%" flexDirection="row" justifyContent="space-between" backgroundColor={props.api.theme.current.primary} paddingLeft={1} paddingRight={1} focusable={Boolean(props.onToggle)} onMouseDown={onMouseDown} onKeyDown={onKeyDown}>
+    <box width="100%" flexDirection="row" justifyContent="space-between" marginTop={props.native ? 1 : undefined} backgroundColor={props.api.theme.current.primary} paddingLeft={1} paddingRight={1} focusable={Boolean(props.onToggle)} onMouseDown={onMouseDown} onKeyDown={onKeyDown}>
       <text selectable={false} fg={props.api.theme.current.background} attributes={1}>{titleText()}</text>
       <text selectable={false} fg={props.api.theme.current.background}>{rightContent()}</text>
     </box>
@@ -159,9 +157,7 @@ export function CommandEntry(props: { api: TuiPluginApi; prompt: TuiPromptProps 
 }
 
 export function AgentMatrix(props: Props & { width?: number; limit?: number }) {
-  const rows = createMemo(() => {
-    return configuredAgents(props.api, props.sessionID, props.tracker)
-  })
+  const rows = createMemo(() => configuredAgents(props.api, props.sessionID, props.tracker))
   const visibleRows = createMemo(() => rows().slice(0, props.limit ?? 20))
   const visibleNames = createMemo(() => visibleRows().map((row) => row.name))
   const rowsByName = createMemo(() => new Map(rows().map((row) => [row.name, row])))
@@ -176,13 +172,13 @@ export function AgentMatrix(props: Props & { width?: number; limit?: number }) {
       <SectionTitle api={props.api} title="Agents" right={() => `${rows().length}`} width={width()} native={props.nativeSidebar} collapsed={collapsed()} onToggle={() => setCollapsed(!collapsed())} />
       {!collapsed() && (
         <>
-          {!props.nativeSidebar && (() => {
-            return <box width="100%" flexDirection="row" justifyContent="space-between">
+          {!props.nativeSidebar && (
+            <box width="100%" flexDirection="row" justifyContent="space-between">
               <box width="40%" flexDirection="row" justifyContent="flex-start"><text fg={props.api.theme.current.textMuted}>Agent</text></box>
               <box width="40%" flexDirection="row" justifyContent="flex-start"><text fg={props.api.theme.current.textMuted}>Model</text></box>
               <box width="20%" flexDirection="row" justifyContent="flex-end"><text fg={props.api.theme.current.textMuted}>Status</text></box>
             </box>
-          })()}
+          )}
           <For each={visibleNames()}>
             {(name, index) => <AgentRowRenderer api={props.api} agent={rowsByName().get(name)!} index={index()} width={width()} />}
           </For>
@@ -317,8 +313,7 @@ export function QuotaPanel(props: { api: TuiPluginApi; width?: number }) {
   })
   const itemLabel = (row: QuotaSnapshot["rows"][number]) => {
     const prefix = `${row.provider} `
-    const name = row.name.startsWith(prefix) ? row.name.slice(prefix.length) : row.name
-    return name
+    return row.name.startsWith(prefix) ? row.name.slice(prefix.length) : row.name
   }
   const toggleAccount = (account: string) => setCollapsedAccounts((current) => {
     const next = new Set(current)
@@ -332,34 +327,23 @@ export function QuotaPanel(props: { api: TuiPluginApi; width?: number }) {
     const minutes = Math.max(0, Math.floor((Date.now() - updatedAt) / 60_000))
     return minutes < 1 ? "cached now" : `cached ${minutes} min ago`
   }
-  const toggleAccountKey = (event: KeyEvent, account: string) => {
-    if (event.eventType !== "press" || (event.name !== "return" && event.name !== "enter" && event.name !== "space")) return
-    event.preventDefault()
-    event.stopPropagation()
-    toggleAccount(account)
-  }
   return <box flexDirection="column" width="100%">
     <SectionTitle api={props.api} title="Quota" right={() => snapshot() ? `${snapshot()!.providerCount}` : "..."} width={width()} native collapsed={collapsed()} onToggle={() => setCollapsed(!collapsed())} />
     {!collapsed() && (
       <>
-        <box width="100%" paddingLeft={1} paddingRight={1} focusable onMouseDown={() => void refresh(true)} onKeyDown={(event) => {
-          if (event.eventType !== "press" || (event.name !== "return" && event.name !== "enter" && event.name !== "space")) return
-          event.preventDefault()
-          event.stopPropagation()
-          void refresh(true)
-        }}>
+        <box width="100%" paddingLeft={1} paddingRight={1} focusable onMouseDown={() => void refresh(true)} onKeyDown={onActivateKey(() => void refresh(true))}>
           <text fg={refreshing() ? props.api.theme.current.textMuted : props.api.theme.current.accent}>{() => refreshing() ? "Loading..." : "[ Load live quota ]"}</text>
         </box>
         <For each={groups()}>
           {(group, groupIndex) => (
             <box width="100%" flexDirection="column" marginTop={groupIndex() === 0 ? 0 : 1} paddingLeft={1} paddingRight={1}>
-              <box width="100%" flexDirection="column" focusable onMouseDown={() => toggleAccount(group.service)} onKeyDown={(event) => toggleAccountKey(event, group.service)}>
+              <box width="100%" flexDirection="column" focusable onMouseDown={() => toggleAccount(group.service)} onKeyDown={onActivateKey(() => toggleAccount(group.service))}>
                 <text fg={props.api.theme.current.accent} attributes={1} wrapMode="word">{() => `${collapsedAccounts().has(group.service) ? "+" : "v"} ${group.service}`}</text>
                 <Show when={cacheAge(group.accounts.flatMap(a => a.items))}>{(age) => <text fg={props.api.theme.current.textMuted} wrapMode="word">{age()}</text>}</Show>
               </box>
               <Show when={!collapsedAccounts().has(group.service)}>
                 <For each={group.accounts}>
-                  {(accountGroup, accountIndex) => (
+                  {(accountGroup) => (
                     <box width="100%" flexDirection="column" marginTop={accountGroup.account === "Default" ? 0 : 1}>
                       <Show when={accountGroup.account !== "Default"}>
                         <text fg={props.api.theme.current.text} wrapMode="word" attributes={1}>{accountGroup.account}</text>
@@ -466,11 +450,7 @@ function ActivityChart(props: Props & { width: number }) {
   const [collapsed, setCollapsed] = createSignal(false)
   return <box flexDirection="column" width="100%">
     <SectionTitle api={props.api} title="Activity" right={mode} width={props.width} collapsed={collapsed()} onToggle={() => setCollapsed(!collapsed())} />
-    {!collapsed() && (
-      <>
-        <text fg={props.api.theme.current.textMuted}>{truncate(detail(), props.width)}</text>
-      </>
-    )}
+    {!collapsed() && <text fg={props.api.theme.current.textMuted}>{truncate(detail(), props.width)}</text>}
     <box height={1} />
   </box>
 }
@@ -537,6 +517,3 @@ export function BergCommandCenter(props: Props) {
   )
 }
 
-export function activeSessionID(api: TuiPluginApi): string | undefined {
-  return currentSessionID(api)
-}

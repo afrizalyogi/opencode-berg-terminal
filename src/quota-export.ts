@@ -30,23 +30,10 @@ function object(value: unknown): PlainObject | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value as PlainObject : undefined
 }
 
-function jwtAccountID(token: string): string | undefined {
+function jwtPayload(token: string): PlainObject | undefined {
   try {
     const raw = token.split(".")[1]
-    if (!raw) return undefined
-    const payload = JSON.parse(Buffer.from(raw.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"))
-    return payload?.["https://api.openai.com/auth"]?.chatgpt_account_id
-  } catch {
-    return undefined
-  }
-}
-
-function jwtEmail(token: string): string | undefined {
-  try {
-    const raw = token.split(".")[1]
-    if (!raw) return undefined
-    const payload = JSON.parse(Buffer.from(raw.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"))
-    return typeof payload?.email === "string" ? payload.email : undefined
+    return raw ? JSON.parse(Buffer.from(raw.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")) : undefined
   } catch {
     return undefined
   }
@@ -84,7 +71,8 @@ async function fetchOpenAI(auth: PlainObject): Promise<QuotaRow[]> {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 5_000)
     try {
-      const accountID = jwtAccountID(entry.access) ?? entry.accountId
+      const payload = jwtPayload(entry.access)
+      const accountID = payload?.["https://api.openai.com/auth"]?.chatgpt_account_id ?? entry.accountId
       const response = await fetch("https://chatgpt.com/backend-api/wham/usage", {
         headers: {
           Authorization: `Bearer ${entry.access}`,
@@ -93,7 +81,7 @@ async function fetchOpenAI(auth: PlainObject): Promise<QuotaRow[]> {
         signal: controller.signal,
       })
       if (!response.ok) return []
-      const account = maskEmail(jwtEmail(entry.access) ?? entry.email)
+      const account = maskEmail(typeof payload?.email === "string" ? payload.email : entry.email)
       return parseOpenAIUsage(await response.json()).map((row) => ({ ...row, account }))
     } finally {
       clearTimeout(timer)
@@ -139,7 +127,6 @@ function modelFamily(key: string): string {
   if (key.includes("claude")) return "claude"
   if (key.includes("gemini-flash")) return "gemini-flash"
   if (key.includes("gemini-pro")) return "gemini-pro"
-  if (key.includes("gemini")) return "gemini"
   return "gemini"
 }
 
