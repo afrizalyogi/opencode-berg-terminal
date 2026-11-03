@@ -87,7 +87,7 @@ The code is in [`src/quota-export.ts`](src/quota-export.ts).
 
 ## Requirements
 
-- Node.js 22.23.4+ and npm 10+
+- Node.js 26+ and npm 10+
 - OpenCode with source TSX TUI plugin support
 
 ## Install
